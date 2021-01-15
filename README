@@ -1,0 +1,21 @@
+# Now a readme file.
+=== 2021-01-15 ===
+
+Project Notes
+-------------
+
+Instructions for Running:
+./patchsaas.sh
+
+Product Description:
+Bash shell script written by Andrew Nisbet for Edmonton Public Library, distributable by the enclosed license.
+
+Repository Information:
+This product is under version control using Git.
+
+Dependencies:
+None
+
+Known Issues:
+None
+
