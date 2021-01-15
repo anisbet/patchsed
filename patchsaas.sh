@@ -25,7 +25,7 @@
 #
 #########################################################################
 # tar --extract --file=archive.tar file1.txt
-VERSION=0.0
+VERSION=1.0
 APP_NAME="patchsaas"
 TRUE=0
 FALSE=1
