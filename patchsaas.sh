@@ -34,6 +34,9 @@ FALSE=1
 [ -d "$HOME" ] || { echo "$HOME not a directory." >&2 ; exit 1 ; }
 if [[ "$HOME" != $(pwd) ]]; then echo "Script must be run from $HOME. Move it there and try again." >&2; exit 1; fi
 WORK_DIR="$HOME"
+BAK=$(date +"%Y%m%d_%H%M%S")
+TARBALL="$WORK_DIR/${APP_NAME}.${BAK}.tar"
+
 
 # Displays the usage for this product.
 # param:  none
@@ -94,13 +97,32 @@ confirm()
 	esac
 }
 
-# Takes a relative path as argument patches it.
+# Takes a relative path as argument patches it. Saves a timestamped version of the file so 
+# running it multiple times doesn't overwrite any backups in the tarball.
 # param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
 patch_file()
 {
-    local file="$1"
-    
-    return $TRUE
+    local original="$1"
+    # Backup the original to a timestamped tarball
+    if ! tar rvf "$TARBALL" "${original}"; then
+        logit "**error: failed to back up $original skipping..."
+        return $FALSE
+    fi
+    # copy the file to the script run time. All files done in the same pass must have the same time stamp.
+    local temp="$original.bak"
+    # Can fail if disk full or what ever.
+    if cp "$original" "$temp"; then 
+        # overwrite original with modifications.
+        if sed -e 's/\/s\/sirsi/\$HOME/g' < "$temp" > "$original"; then
+            # get rid of the temp file.
+            rm "$temp"
+            return $TRUE
+        fi
+    else
+        logit "**error, failed to make backup copy of original script."
+        return $FALSE
+    fi
+    return $FALSE
 }
 
 export target_script_patching_file=$FALSE
