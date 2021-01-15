@@ -29,10 +29,9 @@
 #########################################################################
 LOCAL=~/projects/patchsaas/
 APP=patchsaas.sh
-.PHONY: test run
+.PHONY: test
 
 test: 
-	echo "test script"
-run: test 
-	echo "run script"
+	cp ${APP} ${HOME}
+    
 

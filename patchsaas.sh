@@ -1,8 +1,9 @@
 #!/bin/bash
 ###########################################################################
 #
-# Bash shell script for project patchsaas
-#<one line to give the program's name and a brief idea of what it does.>
+# Bash shell script that patches other scripts to make them portable 
+# across other Linux systems that use bash as their SHELL.
+#
 #    Copyright (C) 2021  Andrew Nisbet, Edmonton Public Library
 # The Edmonton Public Library respectfully acknowledges that we sit on
 # Treaty 6 territory, traditional lands of First Nations and Metis people.
@@ -23,20 +24,50 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
+# tar --extract --file=archive.tar file1.txt
+VERSION=0.0
+APP_NAME="patchsaas"
+TRUE=0
+FALSE=1
+# Make sure $HOME is set to a directory, and this script is running from it.
+[ -z "$HOME" ] && { echo "\$HOME not set??" >&2 ; exit 1 ; }
+[ -d "$HOME" ] || { echo "$HOME not a directory." >&2 ; exit 1 ; }
+if [[ "$HOME" != $(pwd) ]]; then echo "Script must be run from $HOME. Move it there and try again." >&2; exit 1; fi
+WORK_DIR="$HOME"
 
-VERSION=0
-
-# Display usage message.
+# Displays the usage for this product.
 # param:  none
 # return: none
 usage()
 {
-	cat << USAGE
-Usage: $0 [-option]
- Description of what the application does, and how to use it.
- Version: $VERSION
- exit 1
-USAGE
+    cat << EOFU!
+ Usage: ${APP_NAME}.sh [flags]
+ 
+ Runs load tests on the ILS.
+
+Flags:
+ -h, -help, --help: This help message.
+ -i, -input_list, --input_list [file]: specifies the list scripts to target for patching.
+    File names should include the relative path to the $HOME directory.
+ -v, -version, --version: Print script version.
+   
+ Example:
+    ./${APP_NAME}.sh --input_list "./broken_scripts.txt"
+EOFU!
+}
+
+# Logs messages to STDERR and $LOG file.
+# param:  Log file name. The file is expected to be a fully qualified path or the output
+#         will be directed to a file in the directory the script's running directory.
+# param:  Message to put in the file.
+# param:  (Optional) name of a operation that called this function.
+logit()
+{
+    local log_file="$WORK_DIR/${APP_NAME}.log"
+    local message="$1"
+    local time=$(date +"%Y-%m-%d %H:%M:%S")
+    echo "[$time] $message" >>$log_file
+    echo "[$time] $message" >&2
 }
 
 # Asks if user would like to do what the message says.
@@ -46,39 +77,92 @@ confirm()
 {
 	if [ -z "$1" ]; then
 		echo "** error, confirm_yes requires a message." >&2
-		exit 1
+		exit $FALSE
 	fi
 	local message="$1"
-	echo "$message? y/[n]: " >&2
+	echo -n "$message? y/[n]: " >&2
 	read answer
 	case "$answer" in
 		[yY])
 			echo "yes selected." >&2
-			echo 0
+			return $TRUE
 			;;
 		*)
 			echo "no selected." >&2
-			echo 1
+			return $FALSE
 			;;
 	esac
-	echo 1
 }
 
-# Argument processing.
-while getopts ":a:x" opt; do
-  case $opt in
-	a)	echo "-a triggered with '$OPTARG'\n" >&2
-		;;
-	x)	usage
-		;;
-	\?)	echo "Invalid option: -$OPTARG" >&2
-		usage
-		;;
-	:)	echo "Option -$OPTARG requires an argument." >&2
-		usage
-		;;
-  esac
-done
-exit 0
+# Takes a relative path as argument patches it.
+# param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
+patch_file()
+{
+    local file="$1"
+    
+    return $TRUE
+}
 
-# EOF
+export target_script_patching_file=$FALSE
+
+# $@ is all command line parameters passed to the script.
+# -o is for short options like -v
+# -l is for long options with double dash like --version
+# the comma separates different long options
+# -a is for long options with single dash like -version
+options=$(getopt -l "help,input_list:,version" -o "hi:v" -a -- "$@")
+
+# set --:
+# If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters 
+# are set to the arguments, even if some of them begin with a ‘-’.
+eval set -- "$options"
+
+while true
+do
+    case $1 in
+    -h|--help) 
+        usage
+        ;;
+    -i|--input_list)
+        shift
+        export target_script_patching_file="$1"
+        ;;
+    -v|--version) 
+        echo "$APP_NAME version: $VERSION"
+        ;;
+    --)
+        shift
+        break
+        ;;
+    esac
+    shift
+done
+### Actual work happens here.
+# Test if the input script is readable.
+if [ -r "$target_script_patching_file" ]; then
+    logit "processng files found in $target_script_patching_file"
+    attempts=0
+    lines=0
+    patched=0
+    while IFS= read -r script_name; do
+        lines=$((lines+1))
+        if [ -r "$script_name" ]; then
+            attempts=$((attempts+1))
+            if patch_file "$script_name"; then
+                logit "patched: $script_name"
+                patched=$((patched+1))
+            else
+                logit "patch_file() refused to patch $script_name"
+            fi
+        else
+            logit "*warn: file $script_name wasn't found"
+        fi
+    done < "$target_script_patching_file"
+    logit "---"
+    logit "read: $lines, analysed: $attempts, patched: $patched"
+    exit 0
+else
+    logit "**error, the target script file was either missing, empty, or unreadable."
+    usage
+    exit 1
+fi

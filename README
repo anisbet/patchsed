@@ -1,21 +1,22 @@
 # Now a readme file.
 === 2021-01-15 ===
 
-Project Notes
--------------
+# Project Notes
+Patches scripts to run agnostically of the Linux environment. This is required because SaaS migration has shown that many of the scripts we use have hard-coded paths to $HOME which requires them to be either converted to the new path paradigm, or simply patch them so they work no matter what environment they end up in.
+
 
 Instructions for Running:
-./patchsaas.sh
+./patchsaas.sh [options]
 
-Product Description:
+# Product Description:
 Bash shell script written by Andrew Nisbet for Edmonton Public Library, distributable by the enclosed license.
 
-Repository Information:
+# Repository Information:
 This product is under version control using Git.
 
-Dependencies:
+# Dependencies:
 None
 
-Known Issues:
+# Known Issues:
 None
 
