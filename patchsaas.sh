@@ -24,7 +24,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=1.01.04
+VERSION=2.00.06
 APP_NAME="patchsaas"
 TRUE=0
 FALSE=1
@@ -35,6 +35,7 @@ if [[ "$HOME" != $(pwd) ]]; then echo "Script must be run from $HOME. Move it th
 WORK_DIR="$HOME"
 BAK=$(date +"%Y%m%d_%H%M%S")
 TARBALL="$WORK_DIR/${APP_NAME}.${BAK}.tar"
+LOG_FILE="$WORK_DIR/${APP_NAME}.log"
 
 
 # Displays the usage for this product.
@@ -64,6 +65,11 @@ Flags:
     File names should include the relative path to the $HOME directory. For example, if you want the file
     $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this
     list will be modified in the same way. See -s for more information.
+ -r, -restore, --restore: Rolls back script changes to any checkpoint. 
+    Restores all the files in all the patch.*.tar files in reverse chronological order.
+    You will be asked to confirm each transaction. The log file is unaffected by restores.
+    If there are no patchsaas.*.tar files to restore from, ls will emit an error that 
+    it could not find a file called 'patchsaas.*.tar'.
  -s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts.
     The sed commands should be thoroughly tested before modifying scripts as complex sed commands 
     are notoriously tricky.
@@ -83,10 +89,9 @@ EOFU!
 # param:  (Optional) name of a operation that called this function.
 logit()
 {
-    local log_file="$WORK_DIR/${APP_NAME}.log"
     local message="$1"
     local time=$(date +"%Y-%m-%d %H:%M:%S")
-    echo "[$time] $message" >>$log_file
+    echo "[$time] $message" >>$LOG_FILE
     echo "[$time] $message" >&2
 }
 
@@ -143,6 +148,40 @@ patch_file()
     return $FALSE
 }
 
+# Restores all the files in all the patch.*.tar files in reverse chronological order.
+# You will be asked to confirm each transaction. The log file is unaffected by restores.
+#
+# If there are no patchsaas.*.tar files to restore from, ls will emit an error that 
+# it could not find a file called 'patchsaas.*.tar'. 
+# param:  none.
+restore()
+{
+    local tarball=""
+    local last_tarball=""
+    # list the tarballs in reverse chronological order to undo the most recent first.
+    for tarball in $(ls -tc1 ${APP_NAME}.*.tar); do
+        if [ -f "$tarball" ]; then
+            if $(confirm "restore files from '$tarball'"); then
+                # Extract all the files except the log file since 
+                # that would wipe the on-going history of events.
+                if tar xvf "$tarball" --exclude="${APP_NAME}.log" 2>&1 >>"$LOG_FILE"; then
+                    logit "restored files from '$tarball'"
+                    last_tarball="$tarball"
+                else
+                    logit "**error, failed to restore files from $tarball."
+                    return $FALSE
+                fi
+            else
+                [[ -z "$last_tarball" ]] || logit "restore complete"
+                return $FALSE
+            fi
+        else
+            logit "*warn, expected $tarball to be a regular file. Skipping."
+        fi
+    done
+    return $TRUE
+}
+
 export target_script_patching_file=$FALSE
 export sed_script_file=$FALSE
 
@@ -151,7 +190,7 @@ export sed_script_file=$FALSE
 # -l is for long options with double dash like --version
 # the comma separates different long options
 # -a is for long options with single dash like -version
-options=$(getopt -l "help,input_list:,sed_file:,version" -o "hi:s:v" -a -- "$@")
+options=$(getopt -l "help,input_list:,restore,sed_file:,version" -o "hi:rs:v" -a -- "$@")
 if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 # set --:
 # If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters 
@@ -168,6 +207,9 @@ do
     -i|--input_list)
         shift
         export target_script_patching_file="$1"
+        ;;
+    -r|--restore)
+        if restore; then exit 0; else exit 1; fi
         ;;
     -s|--sed_file)
         shift
@@ -188,7 +230,7 @@ done
 ### Actual work happens here.
 # Test if the input script is readable.
 if [ -r "$target_script_patching_file" ]; then
-    logit "processng files found in $target_script_patching_file"
+    logit "processng files found in $target_script_patching_file with commands found in $sed_script_file"
     attempts=0
     lines=0
     patched=0
