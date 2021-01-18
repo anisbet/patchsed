@@ -24,8 +24,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-# tar --extract --file=archive.tar file1.txt
-VERSION=1.0
+VERSION=1.01.04
 APP_NAME="patchsaas"
 TRUE=0
 FALSE=1
@@ -44,18 +43,36 @@ TARBALL="$WORK_DIR/${APP_NAME}.${BAK}.tar"
 usage()
 {
     cat << EOFU!
+    
+    
  Usage: ${APP_NAME}.sh [flags]
  
- Runs load tests on the ILS.
+ Modifies scripts en masse. This script is meant to help with porting multiple scripts to run in a 
+ new Linux environment. The modifications are done through sed commands which are read from a file 
+ specified with the -s switch.
+ 
+ If the script successfully modifies a single file, the log of transactions, the sed script of commands
+ and the original unmodified script are backed up in a timestamped tarball. The timestamp reads as 
+ YYYYMMDD_HHMMSS. For example, if run now, the backup file would be "$TARBALL".
+ 
+ This means that every time you run the script you create a mile stone of modifications. To roll back
+ simply untar the files in reverse chronological order.
 
 Flags:
  -h, -help, --help: This help message.
- -i, -input_list, --input_list [file]: specifies the list scripts to target for patching.
-    File names should include the relative path to the $HOME directory.
- -v, -version, --version: Print script version.
+ -i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching.
+    File names should include the relative path to the $HOME directory. For example, if you want the file
+    $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this
+    list will be modified in the same way. See -s for more information.
+ -s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts.
+    The sed commands should be thoroughly tested before modifying scripts as complex sed commands 
+    are notoriously tricky.
+ -v, -version, --version: Print script version and exits.
    
  Example:
-    ./${APP_NAME}.sh --input_list "./broken_scripts.txt"
+    ./${APP_NAME}.sh --input_list ./scripts_to_port.txt -s sed_commands.sed
+    
+    
 EOFU!
 }
 
@@ -99,41 +116,43 @@ confirm()
 
 # Takes a relative path as argument patches it. Saves a timestamped version of the file so 
 # running it multiple times doesn't overwrite any backups in the tarball.
+# param:  name of the sed file script to run.
 # param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
 patch_file()
 {
-    local original="$1"
-    # Backup the original to a timestamped tarball
-    if ! tar rvf "$TARBALL" "${original}"; then
-        logit "**error: failed to back up $original skipping..."
-        return $FALSE
-    fi
-    # copy the file to the script run time. All files done in the same pass must have the same time stamp.
+    local sed_file="$1"
+    local original="$2"
     local temp="$original.bak"
     # Can fail if disk full or what ever.
-    if cp "$original" "$temp"; then 
+    if cp "$original" "$temp"; then
+        # Backup the original to a timestamped tarball
+        if ! tar rvf "$TARBALL" "${original}"; then
+            logit "**error: failed to back up $original skipping..."
+            return $FALSE
+        fi
         # overwrite original with modifications.
-        if sed -e 's/\/s\/sirsi/\$HOME/g' < "$temp" > "$original"; then
+        if sed -f "$sed_file" < "$temp" > "$original"; then
             # get rid of the temp file.
             rm "$temp"
             return $TRUE
         fi
     else
-        logit "**error, failed to make backup copy of original script."
+        logit "**error, $original failed to be copied prior to editing, skipping."
         return $FALSE
     fi
     return $FALSE
 }
 
 export target_script_patching_file=$FALSE
+export sed_script_file=$FALSE
 
 # $@ is all command line parameters passed to the script.
 # -o is for short options like -v
 # -l is for long options with double dash like --version
 # the comma separates different long options
 # -a is for long options with single dash like -version
-options=$(getopt -l "help,input_list:,version" -o "hi:v" -a -- "$@")
-
+options=$(getopt -l "help,input_list:,sed_file:,version" -o "hi:s:v" -a -- "$@")
+if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 # set --:
 # If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters 
 # are set to the arguments, even if some of them begin with a ‘-’.
@@ -144,13 +163,19 @@ do
     case $1 in
     -h|--help) 
         usage
+        exit 0
         ;;
     -i|--input_list)
         shift
         export target_script_patching_file="$1"
         ;;
+    -s|--sed_file)
+        shift
+        export sed_script_file="$1"
+        ;;
     -v|--version) 
         echo "$APP_NAME version: $VERSION"
+        exit 0
         ;;
     --)
         shift
@@ -159,6 +184,7 @@ do
     esac
     shift
 done
+: ${sed_script_file:?Missing -s,--sed_file} ${target_script_patching_file:?Missing -i,--input_list}
 ### Actual work happens here.
 # Test if the input script is readable.
 if [ -r "$target_script_patching_file" ]; then
@@ -169,19 +195,27 @@ if [ -r "$target_script_patching_file" ]; then
     while IFS= read -r script_name; do
         lines=$((lines+1))
         if [ -r "$script_name" ]; then
-            attempts=$((attempts+1))
-            if patch_file "$script_name"; then
-                logit "patched: $script_name"
-                patched=$((patched+1))
+            if [ -r "$sed_script_file" ]; then
+                attempts=$((attempts+1))
+                if patch_file "$sed_script_file" "$script_name"; then
+                    logit "patched: $script_name"
+                    patched=$((patched+1))
+                else
+                    logit "patch_file() refused to patch $script_name"
+                fi
             else
-                logit "patch_file() refused to patch $script_name"
+                logit "**error, sed script file was not found, was empty, or could not be read."
+                exit 1
             fi
         else
-            logit "*warn: file $script_name wasn't found"
+            logit "*warn: skipping $script_name because it could not be found, was empty, or could not be read."
         fi
     done < "$target_script_patching_file"
     logit "---"
     logit "read: $lines, analysed: $attempts, patched: $patched"
+    if [ -r "$TARBALL" ]; then
+        tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
+    fi
     exit 0
 else
     logit "**error, the target script file was either missing, empty, or unreadable."

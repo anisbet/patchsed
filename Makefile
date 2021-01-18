@@ -31,7 +31,8 @@ LOCAL=~/projects/patchsaas/
 APP=patchsaas.sh
 .PHONY: test
 
-test: 
+test:
 	cp ${APP} ${HOME}
+	# cp testscript.sh.orig testscript.sh
     
 
