@@ -27,12 +27,17 @@
 #
 #      0.0 - Dev.
 #########################################################################
-LOCAL=~/projects/patchsaas/
+PRODUCTION_SERVER=eplapp.library.ualberta.ca
+TEST_SERVER=edpl-t.library.ualberta.ca
+USER=sirsi
+LOCAL=~/projects/patchsaas
 APP=patchsaas.sh
-.PHONY: test
+.PHONY: test production
 
 test:
-	cp ${APP} ${HOME}
-	# cp testscript.sh.orig testscript.sh
-    
+	cp ${LOCAL}/${APP} ${HOME}
+	scp ${LOCAL}/${APP} ${USER}@${TEST_SERVER}:~/
+	
+production: ${APP}  
+	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SERVER}:~/
 
