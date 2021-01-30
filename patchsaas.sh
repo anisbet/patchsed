@@ -133,25 +133,13 @@ apply_patch()
     # Can fail if disk full or what ever.
     if cp "$original" "$temp"; then
         # we don't use sed's -i so if it fails we can compare the original to the copy.
-        case sed -f "$sed_file" < "$temp" > "$original" 2>&1 in
-            0) logit "PATCHED $original"
-                rm "$temp"
-                return $TRUE
-                ;;
-            1) logit "**error, syntax error in file '$sed_file'"
-                rm "$temp"
-                exit 1
-                ;;
-            2) logit "*warn, One or more input files could not be opened. Skipping."
-                rm "$temp"
-                ;;
-            4) logit "**error, an I/O or other serious error occured during runtime!"
-                exit 1
-                ;;
-            *) logit "*warn, unknown error reported by sed!"
-                exit 1
-                ;;
-        esac
+        if sed -f "$sed_file" < "$temp" > "$original"; then
+            logit "PATCHED $original"
+            rm "$temp"
+            return $TRUE
+        else
+            logit "**error, sed error!"
+        fi
     else
         logit "**error, failed to create copy of '$original' before patching! Is this partition full?"
         exit 1
