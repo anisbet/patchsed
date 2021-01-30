@@ -24,7 +24,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=3.00.00
+VERSION=3.00.01
 APP_NAME="patchsaas"
 TRUE=0
 FALSE=1
@@ -271,27 +271,6 @@ patch_file()
         return $TRUE
     fi
     return $FALSE
-    # local sed_file="$1"
-    # local original="$2"
-    # local temp="$original.bak"
-    ## Can fail if disk full or what ever.
-    # if cp "$original" "$temp"; then
-        ## Backup the original to a timestamped tarball
-        # if ! tar rvf "$TARBALL" "${original}"; then
-            # logit "**error: failed to back up $original skipping..."
-            # return $FALSE
-        # fi
-        ## overwrite original with modifications.
-        # if sed -f "$sed_file" < "$temp" > "$original"; then
-            ## get rid of the temp file.
-            # rm "$temp"
-            # return $TRUE
-        # fi
-    # else
-        # logit "**error, $original failed to be copied prior to editing, skipping."
-        # return $FALSE
-    # fi
-    # return $FALSE
 }
 
 # Restores all the files in all the patch.*.tar files in reverse chronological order.
@@ -302,8 +281,8 @@ patch_file()
 # param:  none.
 restore()
 {
-    if [ "$use_git" -eq "$TRUE" ]; then
-        logit "restore requested for git repos which should be unecessary, check branches in project for changes."
+    if [ "$use_git" ]; then
+        logit "restore requested for git repos which should not be unecessary, check branches in project for changes."
         if ! confirm "do you want to continue restoring from any tarballs"; then
             logit "aborting restore at user's request."
             exit 1
@@ -338,7 +317,7 @@ restore()
 export target_script_patching_file=$FALSE
 export sed_script_file=$FALSE
 export use_git=$FALSE
-export git_branch="SAAS"
+export git_branch=""
 
 # $@ is all command line parameters passed to the script.
 # -o is for short options like -v
