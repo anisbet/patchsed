@@ -1,0 +1,33 @@
+# process all the references to /s/sirsi into ${HOME} 
+s/\/s\/sirsi/\$\{HOME\}/g
+
+# add a comment before each matching line.
+/\/s\/sirsi/i\##-@- line below changed during migration to Saas
+
+# Add line to source a file after first line.
+1a\. ~/.bashrc
+
+# Change all instances of /s/sirsi except if there is a comment anywhere on the line.
+/#/!s/\/s\/sirsi/\$\{HOME\}/g
+
+# Change all instances of /s/sirsi except if the line contains this or that and the expression.
+/th[is|at]/s/\/s\/sirsi/\$\{HOME\}/g
+
+# Change /s/sirsi in comments to /software/EDPL in comments, and in non-comments to ${HOME}.
+/#/! s@/s/sirsi@\$\{HOME\}@g
+/#/  s@/s/sirsi@/software/EDPL@g
+
+# Copy a line with eplapp.library.ualberta.ca to another line comment it out and change server name.
+# First -e copies the line with an Upper case variable assignment and comments out the original.
+# The second replaces the hostname on the first instance.
+# sed -e 's/[A-Z_]*=eplapp.library.ualberta.ca/&\n# &/' -e 's/eplapp.library.ualberta.ca/edpl.sirsidynix.net/' <Makefile.test
+## Looks like
+...
+PRODUCTION_SERVER=edpl.sirsidynix.net
+# PRODUCTION_SERVER=eplapp.library.ualberta.ca
+...
+# regardless of what the variable name, and works even if the line is commented. the replacement line is also commented out.
+# Same but in scr file form: # copy line with declaration of variable and hostname, comment it out and change hostname.
+s/[A-Z_]*=eplapp.library.ualberta.ca/&\n# &/
+s/eplapp.library.ualberta.ca/edpl.sirsidynix.net/
+
