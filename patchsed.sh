@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=3.00.01
+VERSION=4.00.06
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -47,36 +47,45 @@ usage()
     
  Usage: ${APP_NAME}.sh [flags]
  
- Modifies scripts en masse. This script is meant to help with porting multiple scripts to run in a 
- new Linux environment. The modifications are done through sed commands which are read from a file 
- specified with the -s switch.
- 
- If the script successfully modifies a single file, the log of transactions, the sed script of commands
- and the original unmodified script are backed up in a timestamped tarball. The timestamp reads as 
- YYYYMMDD_HHMMSS. For example, if run now, the backup file would be "$TARBALL".
- 
- This means that every time you run the script you create a mile stone of modifications. To roll back
- simply untar the files in reverse chronological order.
+Modifies scripts en masse using sed scripts. The motivation is to automate many similar changes on large numbers of files.
+The modifications are made by arbitrary sed scripts specified on the command line with the -s switch.
 
-Flags:
- -g[branch], -git[branch], --git[branch]: Use git if possible. This flag will test if git is available,  
-    and if so test if the file is part of a git repo. If it is, it will checkout the project as a new branch  
-    before makeing changes. Make the changes, commit the files, and then change back to the previous branch.
- -h, -help, --help: This help message.
- -i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching.
-    File names should include the relative path to the $HOME directory. For example, if you want the file
-    $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this
-    list will be modified in the same way. See -s for more information.
- -r, -restore, --restore: Rolls back script changes to any checkpoint. 
-    Restores all the files in all the patch.*.tar files in reverse chronological order.
-    You will be asked to confirm each transaction. The log file is unaffected by restores.
-    If there are no patchsaas.*.tar files to restore from, ls will emit an error that 
-    it could not find a file called 'patchsaas.*.tar'.
- -s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts.
-    The sed commands should be thoroughly tested before modifying scripts as complex sed commands 
-    are notoriously tricky.
- -v, -version, --version: Print script version and exits.
-   
+Scripts are first tested for membership in a Git repo. If the file tests to belong to a Git repo, 
+the script started with –branch=’SAAS’ and the current branch is, say ‘FixBug’, the script checks 
+out the master branch, creates or checks out a SAAS branch, makes modifications with sed, commits 
+the changes with a message from the first comment line in the sed script, then changes back to 
+‘FixBug’ branch. If an error occurs the script will exit without changing branches.
+
+The restore feature has no effect on files monitored by Git as the changes are isolated in their 
+own branch, but to make the changes permanent the branch will need to be merged with the master 
+branch. This is left as an exercise to the reader since version numbers may need to be updated, 
+and some projects have complicated histories. Just be sure to merge the ‘SAAS’ branch before 
+pushing to production.  
+
+If the file is not part of a repo, the pre-modified script, the transaction log, the sed script 
+will be saved to a timestamped tarball for use by the --restore function. Restore will replace 
+any file in reverse chronological order back to the first modification. You also have the 
+option to exit at any stage of restore.
+
+Flags: 
+
+-b, -branch, --branch [branch_name]: If any file in the input list turns out to be managed by Git, 
+    make a  new branch named branch_name. 
+-h, -help, --help: This help message. 
+-i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching. 
+    File names should include the relative path to the $HOME directory. For example, if you want the file 
+    $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this 
+    list will be modified in the same way. See -s for more information. 
+-r, -restore, --restore: Rolls back script changes to any checkpoint.  
+    Restores all the files in all the patch.*.tar files in reverse chronological order. 
+    You will be asked to confirm each transaction. The log file is unaffected by restores. 
+    If there are no patchsaas.*.tar files to restore from, ls will emit an error that  
+    it could not find a file called 'patchsaas.*.tar'. 
+-s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts. 
+    The sed commands should be thoroughly tested before modifying scripts as complex sed commands  
+    are notoriously tricky. 
+-v, -version, --version: Print script version and exits. 
+
  Example:
     ./${APP_NAME}.sh --input_list ./scripts_to_port.txt -s sed_commands.sed
     
@@ -133,7 +142,6 @@ apply_patch()
     if cp "$original" "$temp"; then
         # we don't use sed's -i so if it fails we can compare the original to the copy.
         if sed -f "$sed_file" < "$temp" > "$original"; then
-            logit "PATCHED $original"
             rm "$temp"
             return $TRUE
         else
@@ -149,7 +157,7 @@ apply_patch()
 # Use the tarball strategy. Tarball original for rollback, then patch the file.
 # param:  name of the sed file script to run.
 # param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
-use_tarball()
+use_non_git_strategy()
 {
     local sed_file="$1"
     local original="$2"
@@ -165,16 +173,58 @@ use_tarball()
     return $FALSE
 }
 
-# Implements the git repo strategy. 
-# Test if git is available, and if so test if the file is part of a git repo. 
-# If it is, it will checkout the project as a new branch (supplied with --git flag), 
-# makes the changes, commit the files, and then change back to the previous branch.
+# Tests if a file is managed by Git and returns $TRUE if it is and $FALSE otherwise, but the
+# script exits if the file's directory does not exist.
+# param:  Qualified path (relative to $HOME) of the file that is the target of the modifications.
+is_not_repo_managed()
+{
+    local original="$1"
+    # Test if git is even available to the user.
+    if ! which git >/dev/null 2>&1; then
+        return $TRUE
+    fi
+    # We do all the operations in the git repo directory.
+    local script_file_name=$(basename "$original")
+    # test if git is available, and if so test if 
+    # the file is part of a git repo. If it is, it will checkout the project as a new branch before 
+    # makeing changes. Make the changes, commit the files, and then change back to the previous branch.
+    #1 cd into directory, so find the directory.
+    local git_dir=$(dirname "$original")
+    if [ ! -d "$git_dir" ]; then
+        logit "**error, $original, in $git_dir is not a directory. Remove it from the file list and re-run."
+        exit 1
+    fi
+    ## DO NOT forget to return $HOME when applying the patch.
+    cd "$git_dir"
+    #2 test if this directory is under git management. If it isn't use the tarball method and return.
+    if [ ! git status >/dev/null 2>&1 ] || [ ! git ls-files --error-unmatch "$script_file_name" >/dev/null 2>&1 ]; then
+        cd $HOME
+        return $TRUE
+    fi
+    cd $HOME
+    return $FALSE
+}
+
+# Patches a file using sed file, and logs the results.
+#
 # param:  name of the sed file script to run.
 # param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
-use_git()
+patch_file()
 {
     local sed_file="$1"
     local original="$2"
+    local log_message=""
+    if is_not_repo_managed "$original"; then
+        log_message="$original does not use git, using $TARBALL for backup strategy."
+        if use_non_git_strategy "$1" "$2"; then
+            logit "SUCCESS: $log_message"
+            return $TRUE
+        else
+            logit "FAIL: $log_message"
+            return $FALSE
+        fi
+    fi
+    log_message="$original using git strategy."
     # We do all the operations in the git repo directory.
     local script_file_name=$(basename "$original")
     # Take the message for the commit from the comment line of the sed file. 
@@ -183,93 +233,45 @@ use_git()
     # allow comments on other lines. This will quit after finding the first comment string.
     local message=$(sed -e 's/^#//;q' <"$sed_file")
     local l_date=$(date +"%Y-%m-%d %H:%M:%S")
-    local my_home="$PWD"
     # reasonable message even if sed didn't get anything useful from the script.
     message="Commit: $l_date $message by $0"
-    # test if git is available, and if so test if 
-    # the file is part of a git repo. If it is, it will checkout the project as a new branch before 
-    # makeing changes. Make the changes, commit the files, and then change back to the previous branch.
-    #1 cd into directory, so find the directory.
     local git_dir=$(dirname "$original")
-    if [ ! -d "$git_dir" ]; then
-        logit "**error, $original should be in $git_dir, but that isn't a directory. Skipping it."
-        return $FALSE
-    fi
     ## DO NOT forget to return $HOME when applying the patch.
     cd "$git_dir"
-    #2 test if this directory is under git management. If it isn't use the tarball method and return.
-    if [ ! git status >/dev/null 2>&1 ] || [ ! git ls-files --error-unmatch "$script_file_name" >/dev/null 2>&1 ]; then
-        # not a repo or file not a member of it so go home.
-        cd "$my_home"
-        logit "*warn, git requested but '$git_dir' isn't under git management, or '$original' is not part of the repo."
-        if confirm "switch to tarball method of backup"; then
-            if use_tarball "$1" "$2"; then
-                return $TRUE
-            else
-                return $FALSE
-            fi
-        else
-            logit "*warn, patching by tarball strategy declined by user."
-            return $FALSE
-        fi
-    fi
     #3) get the current branch and save it.
     local original_branch=$(git rev-parse --abbrev-ref HEAD) 
     #4) checkout the branch supplied with --git, or create a new branch.
     if ! git checkout "$git_branch" >/dev/null 2>&1; then
         # There was no branch names $git_branch, let's make one.
-        if ! git checkout -b "$git_branch"; then
-            cd "$my_home"
+        if ! git checkout -b "$git_branch" >/dev/null 2>&1; then
+            cd "$HOME"
+            logit "FAIL: $log_message"
             logit "**error, failed to checkout '$git_branch' branch while attempting to patch $original."
             # leave us in the directory where things went south so we can inspect.
             exit 1
-        fi
-    fi
-    #5) patch the files.
-    if ! apply_patch "$my_home/$sed_file" "$script_file_name"; then
-        # Exit in the directory where the problem happened.
-        exit 1
-    fi
-    #6) commit the changes to this branch.
-    git commit -a -m"$message"
-    #7) change back to $original_branch.
-    git checkout "$original_branch"
-    logit "$message return in to $original_branch"
-    cd "$my_home" 
-    return $TRUE
-}
-
-# Decides which strategy to use as backup and patch.
-# param:  name of the sed file script to run.
-# param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
-backup_and_patch()
-{
-    local sed_file="$1"
-    local original="$2"
-    # Determine what strategy to use to make backups before patching.
-    # Git allows us to revert within the repo as we like, tarball is good for in-place changes.
-    if [ "$use_git" -eq "$TRUE" ]; then
-        if use_git "$sed_file" "$original"; then
-            return $TRUE
+        else
+            log_message="$log_message Created branch '$git_branch'."
         fi
     else
-        if use_tarball "$sed_file" "$original"; then
-            return $TRUE
-        fi
+        log_message="$log_message Checked out '$git_branch'."
     fi
-    return $FALSE
-}
-
-# Takes a relative path as argument patches it. Saves a timestamped version of the file so 
-# running it multiple times doesn't overwrite any backups in the tarball.
-# param:  name of the sed file script to run.
-# param:  file name with path relative to $HOME. Exmaple: foo/bar/baz.sh
-patch_file()
-{
-    if backup_and_patch "$1" "$2"; then
-        return $TRUE
+    #5) patch the files.
+    if ! apply_patch "$HOME/$sed_file" "$script_file_name"; then
+        logit "FAIL: $log_message"
+        logit "**error, failed to patch $original. Exiting leaving branch as $git_branch."
+        exit 1
+    else
+        log_message="$log_message Applied patch in '$sed_file' successfully."
     fi
-    return $FALSE
+    #6) commit the changes to this branch.
+    git commit -a -m"$message" >/dev/null 2>&1
+    log_message="$log_message committed '$git_branch'."
+    #7) change back to $original_branch.
+    git checkout "$original_branch" >/dev/null 2>&1
+    log_message="SUCCESS: $log_message Returned to '$original_branch'."
+    logit "$log_message"
+    cd "$HOME" 
+    return $TRUE
 }
 
 # Restores all the files in all the patch.*.tar files in reverse chronological order.
@@ -280,13 +282,6 @@ patch_file()
 # param:  none.
 restore()
 {
-    if [ "$use_git" ]; then
-        logit "restore requested for git repos which should not be unecessary, check branches in project for changes."
-        if ! confirm "do you want to continue restoring from any tarballs"; then
-            logit "aborting restore at user's request."
-            exit 1
-        fi
-    fi
     local tarball=""
     local last_tarball=""
     # list the tarballs in reverse chronological order to undo the most recent first.
@@ -323,7 +318,7 @@ export git_branch=""
 # -l is for long options with double dash like --version
 # the comma separates different long options
 # -a is for long options with single dash like -version
-options=$(getopt -l "git:,help,input_list:,restore,sed_file:,version" -o "g:hi:rs:v" -a -- "$@")
+options=$(getopt -l "branch:,help,input_list:,restore,sed_file:,version" -o "b:hi:rs:v" -a -- "$@")
 if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 # set --:
 # If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters 
@@ -333,18 +328,10 @@ eval set -- "$options"
 while true
 do
     case $1 in
-    -g|--git)
+    -b|--branch)
         shift
-        if ! which git >/dev/null 2>&1; then
-            if confirm "git is not available on this system or to this user anyway. Continue anyway'"; then
-                export use_git=$FALSE
-            else
-                exit 1
-            fi
-        else
-            export use_git=$TRUE
-            export git_branch="$1"
-        fi
+        export use_git=$TRUE
+        export git_branch="$1"
         ;;
     -h|--help) 
         usage
@@ -372,7 +359,8 @@ do
     esac
     shift
 done
-: ${sed_script_file:?Missing -s,--sed_file} ${target_script_patching_file:?Missing -i,--input_list}
+# Sed file, input file names, and git branch name are all required.
+: ${sed_script_file:?Missing -s,--sed_file} ${target_script_patching_file:?Missing -i,--input_list} ${git_branch:?Missing -b,--branch}
 ### Actual work happens here.
 # Test if the input script is readable.
 if [ -r "$target_script_patching_file" ]; then
@@ -386,7 +374,6 @@ if [ -r "$target_script_patching_file" ]; then
             if [ -r "$sed_script_file" ]; then
                 attempts=$((attempts+1))
                 if patch_file "$sed_script_file" "$script_name"; then
-                    logit "patched: $script_name"
                     patched=$((patched+1))
                 else
                     logit "patch_file() refused to patch $script_name"

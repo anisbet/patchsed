@@ -1,21 +1,68 @@
-# Now a readme file.
-=== 2021-01-15 ===
+# Patchsed.sh README
+## 2021-01-15
 
 # Project Notes
-Patches scripts to run agnostically of the Linux environment. This is required because SaaS migration has shown that many of the scripts we use have hard-coded paths to $HOME which requires them to be either converted to the new path paradigm, or simply patch them so they work no matter what environment they end up in.
+Patches scripts to run agnostically of the Linux environment. This is required because SaaS migration has shown that many of the scripts we use have hard-coded paths to $HOME which requires them to be either converted to the new path paradigm, or simply patch them so they work no matter what environment they end up in.Modifies scripts en masse using sed scripts. The motivation is to automate many similar changes on large numbers of files.
+The modifications are made by arbitrary sed scripts specified on the command line with the -s switch.
+
+Scripts are first tested for membership in a Git repo. If the file tests to belong to a Git repo, 
+the script started with –branch=’SAAS’ and the current branch is, say ‘FixBug’, the script checks 
+out the master branch, creates or checks out a SAAS branch, makes modifications with sed, commits 
+the changes with a message from the first comment line in the sed script, then changes back to 
+‘FixBug’ branch. If an error occurs the script will exit without changing branches.
+
+The restore feature has no effect on files monitored by Git as the changes are isolated in their 
+own branch, but to make the changes permanent the branch will need to be merged with the master 
+branch. This is left as an exercise to the reader since version numbers may need to be updated, 
+and some projects have complicated histories. Just be sure to merge the ‘SAAS’ branch before 
+pushing to production.  
+
+If the file is not part of a repo, the pre-modified script, the transaction log, the sed script 
+will be saved to a timestamped tarball for use by the --restore function. Restore will replace 
+any file in reverse chronological order back to the first modification. You also have the 
+option to exit at any stage of restore.
+
+Flags: 
+
+-b, -branch, --branch [branch_name]: If any file in the input list turns out to be managed by Git, 
+    make a  new branch named branch_name. 
+-h, -help, --help: This help message. 
+-i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching. 
+    File names should include the relative path to the $HOME directory. For example, if you want the file 
+    $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this 
+    list will be modified in the same way. See -s for more information. 
+-r, -restore, --restore: Rolls back script changes to any checkpoint.  
+    Restores all the files in all the patch.*.tar files in reverse chronological order. 
+    You will be asked to confirm each transaction. The log file is unaffected by restores. 
+    If there are no patchsaas.*.tar files to restore from, ls will emit an error that  
+    it could not find a file called 'patchsaas.*.tar'. 
+-s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts. 
+    The sed commands should be thoroughly tested before modifying scripts as complex sed commands  
+    are notoriously tricky. 
+-v, -version, --version: Print script version and exits. 
+
+ Example:
+    ./${APP_NAME}.sh --input_list ./scripts_to_port.txt -s sed_commands.sed
 
 
 Instructions for Running:
-./patchsaas.sh [options]
+./patchsed.sh [options]
 
 # Product Description:
-Bash shell script written by Andrew Nisbet for Edmonton Public Library, distributable by the enclosed license.
+Bash shell script written by Andrew Nisbet, distributable by the enclosed license.
 
 # Repository Information:
 This product is under version control using Git.
 
 # Dependencies:
 None
+
+# Testing
+* Pass - tests for git, git repo, and file controlled by git.
+* Pass - saves current branch, changes back to original branch when done.
+* Pass - modifies existing branch or creates new one.
+*  - commits changes to named branch with comment from sed file, and script name and time.
+* non-repo file backed up with sed script and file list.
 
 # Known Issues:
 None that we know of.
