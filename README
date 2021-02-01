@@ -45,7 +45,7 @@ Flags:
     ./${APP_NAME}.sh --input_list ./scripts_to_port.txt -s sed_commands.sed
 
 
-Instructions for Running:
+# Instructions for Running:
 ./patchsed.sh [options]
 
 # Product Description:
