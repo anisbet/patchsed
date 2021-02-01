@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.00.06
+VERSION=4.00.07
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -197,9 +197,13 @@ is_not_repo_managed()
     ## DO NOT forget to return $HOME when applying the patch.
     cd "$git_dir"
     #2 test if this directory is under git management. If it isn't use the tarball method and return.
-    if [ ! git status >/dev/null 2>&1 ] || [ ! git ls-files --error-unmatch "$script_file_name" >/dev/null 2>&1 ]; then
+    if ! git status >/dev/null 2>&1; then
         cd $HOME
         return $TRUE
+    fi
+    if ! git ls-files --error-unmatch "$script_file_name" >/dev/null 2>&1; then
+        cd $HOME
+        return $TRUE    
     fi
     cd $HOME
     return $FALSE

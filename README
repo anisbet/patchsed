@@ -61,8 +61,9 @@ None
 * Pass - tests for git, git repo, and file controlled by git.
 * Pass - saves current branch, changes back to original branch when done.
 * Pass - modifies existing branch or creates new one.
-*  - commits changes to named branch with comment from sed file, and script name and time.
-* non-repo file backed up with sed script and file list.
+* Pass - commits changes to named branch with comment from sed file, and script name and time.
+* Pass - non-repo file backed up with sed script and file list and log.
+* Pass - restore rolled back changes in order from most recent to oldest. Git branches not affected.
 
 # Known Issues:
 None that we know of.
