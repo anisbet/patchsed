@@ -1,8 +1,7 @@
 #!/bin/bash
 ###########################################################################
 #
-# Bash shell script that patches other scripts to make them portable 
-# across other Linux systems that use bash as their SHELL.
+# Uses sed scripts to make edits on regular files and files in git repos.
 #
 #    Copyright (C) 2021  Andrew Nisbet, Edmonton Public Library
 # The Edmonton Public Library respectfully acknowledges that we sit on
@@ -25,7 +24,7 @@
 #
 #########################################################################
 VERSION=3.00.01
-APP_NAME="patchsaas"
+APP_NAME="patchsed"
 TRUE=0
 FALSE=1
 # Make sure $HOME is set to a directory, and this script is running from it.

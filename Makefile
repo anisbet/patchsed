@@ -1,11 +1,12 @@
 #########################################################################
-# Makefile for project patchsaas
+# Makefile for project patchsed
 # Created: 2021-01-15
 # Copyright (c) Edmonton Public Library 2021
 # The Edmonton Public Library respectfully acknowledges that we sit on
 # Treaty 6 territory, traditional lands of First Nations and Metis people.
 #
-#<one line to give the program's name and a brief idea of what it does.>
+# Uses sed scripts to make edits on regular files and files in git repos.
+#
 #    Copyright (C) 2021  Andrew Nisbet, Edmonton Public Library
 # The Edmonton Public Library respectfully acknowledges that we sit on
 # Treaty 6 territory, traditional lands of First Nations and Metis people.
@@ -30,8 +31,8 @@
 PRODUCTION_SERVER=eplapp.library.ualberta.ca
 TEST_SERVER=edpl-t.library.ualberta.ca
 USER=sirsi
-LOCAL=~/projects/patchsaas
-APP=patchsaas.sh
+LOCAL=~/projects/patchsed
+APP=patchsed.sh
 .PHONY: test production
 
 test:
