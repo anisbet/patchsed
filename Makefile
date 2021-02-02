@@ -34,20 +34,37 @@ TEST_SERVER=edpl-t.library.ualberta.ca
 USER=sirsi
 LOCAL=~/projects/patchsed
 APP=patchsed.sh
-SED_MAKE_ADD_HOST=makefile.chg.host.sed
-SED_PERL_SRC=perl.src.sed
+
+PRE_BASH=pre-migration_bash.patch.sed
+PRE_PERL=pre-migration_perl.patch.sed
+POST_PERL=post-migration_perl.patch.sed
+PRE_MAKEFILE=pre-migration_Makefile.patch.sed
+
 .PHONY: test production saas local
 
-test:
+test: ${APP} ${PRE_PERL} ${PRE_PERL} ${PRE_BASH} 
 	cp ${LOCAL}/${APP} ${HOME}
 	scp ${LOCAL}/${APP} ${USER}@${TEST_SERVER}:~/
+	scp ${LOCAL}/${PRE_PERL} ${USER}@${TEST_SERVER}:~/
+	# For testing. This will break perl scripts on edpl-t.
+	scp ${LOCAL}/${POST_PERL} ${USER}@${TEST_SERVER}:~/
+	scp ${LOCAL}/${PRE_BASH} ${USER}@${TEST_SERVER}:~/
     
-local:
-	cp ${LOCAL}/sed/${SED_MAKE_ADD_HOST} ${HOME}
-	cp ${LOCAL}/sed/${SED_PERL_SRC} ${HOME}
+local: ${PRE_BASH} ${PRE_MAKEFILE}
+	# Can use -b master.
+	cp ${LOCAL}/${PRE_MAKEFILE} ${HOME}
+	# Especially if the bash_scripts run remotely, but use -bSAAS
+	cp ${LOCAL}/${PRE_BASH} ${HOME}
+	# but use -bSAAS
+	cp ${LOCAL}/${PRE_PERL} ${HOME}
+	# but use -bSAAS
+	cp ${LOCAL}/${POST_PERL} ${HOME}
 	
-production: ${APP}  
+production: ${APP}  ${PRE_PERL} ${PRE_BASH}
 	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SERVER}:~/
+	scp ${LOCAL}/${PRE_PERL} ${USER}@${PRODUCTION_SERVER}:~/
+	scp ${LOCAL}/${PRE_BASH} ${USER}@${PRODUCTION_SERVER}:~/
 
-saas: ${APP}  
+saas: ${APP}  ${POST_PERL}
 	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SAAS_SERVER}:~/
+	scp ${LOCAL}/${POST_PERL} ${USER}@${PRODUCTION_SAAS_SERVER}:~/
