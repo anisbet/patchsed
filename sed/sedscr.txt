@@ -10,12 +10,18 @@ s/\/s\/sirsi/\$\{HOME\}/g
 # Change all instances of /s/sirsi except if there is a comment anywhere on the line.
 /#/!s/\/s\/sirsi/\$\{HOME\}/g
 
+# Change all instances of /s/sirsi to '~'.
+s:/s/sirsi:~:g
+
 # Change all instances of /s/sirsi except if the line contains this or that and the expression.
 /th[is|at]/s/\/s\/sirsi/\$\{HOME\}/g
 
+# The next is not good for Makefiles since it references local $HOME not sirsi's $HOME so suggest '~'
 # Change /s/sirsi in comments to /software/EDPL in comments, and in non-comments to ${HOME}.
 /#/! s@/s/sirsi@\$\{HOME\}@g
 /#/  s@/s/sirsi@/software/EDPL@g
+
+
 
 # Copy a line with eplapp.library.ualberta.ca to another line comment it out and change server name.
 # First -e copies the line with an Upper case variable assignment and comments out the original.
