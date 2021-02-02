@@ -28,18 +28,26 @@
 #
 #      0.0 - Dev.
 #########################################################################
-# PRODUCTION_SERVER=eplapp.library.ualberta.ca
-PRODUCTION_SERVER=edpl.sirsidynix.net
+PRODUCTION_SERVER=eplapp.library.ualberta.ca
+PRODUCTION_SAAS_SERVER=edpl.sirsidynix.net
 TEST_SERVER=edpl-t.library.ualberta.ca
 USER=sirsi
 LOCAL=~/projects/patchsed
 APP=patchsed.sh
-.PHONY: test production
+SED_MAKE_ADD_HOST=makefile.chg.host.sed
+SED_PERL_SRC=perl.src.sed
+.PHONY: test production saas local
 
 test:
 	cp ${LOCAL}/${APP} ${HOME}
 	scp ${LOCAL}/${APP} ${USER}@${TEST_SERVER}:~/
+    
+local:
+	cp ${LOCAL}/sed/${SED_MAKE_ADD_HOST} ${HOME}
+	cp ${LOCAL}/sed/${SED_PERL_SRC} ${HOME}
 	
 production: ${APP}  
 	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SERVER}:~/
 
+saas: ${APP}  
+	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SAAS_SERVER}:~/

@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.00.07
+VERSION=4.00.07a
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -67,6 +67,11 @@ will be saved to a timestamped tarball for use by the --restore function. Restor
 any file in reverse chronological order back to the first modification. You also have the 
 option to exit at any stage of restore.
 
+Notes on input files.
+* This script will use the first commented line from the sed script file as a commit message.
+* The input file list lists files relative to $HOME. The list is also used to tar the files
+  so restore will work in a consistent manner. Use 'egrep -l "<search>"' >files.lst 
+
 Flags: 
 
 -b, -branch, --branch [branch_name]: If any file in the input list turns out to be managed by Git, 
@@ -87,7 +92,7 @@ Flags:
 -v, -version, --version: Print script version and exits. 
 
  Example:
-    ./${APP_NAME}.sh --input_list ./scripts_to_port.txt -s sed_commands.sed
+    ./${APP_NAME}.sh --input_list ./scripts_to_change.txt -s sed_commands.sed
     
     
 EOFU!

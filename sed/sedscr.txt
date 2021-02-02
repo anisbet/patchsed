@@ -31,3 +31,17 @@ PRODUCTION_SERVER=edpl.sirsidynix.net
 s/[A-Z_]*=eplapp.library.ualberta.ca/&\n# &/
 s/eplapp.library.ualberta.ca/edpl.sirsidynix.net/
 
+
+# Change she-bang from Symphony-eplapp Perl to Symphony-saas Perl.
+1s:#!/s/sirsi:#!/software/EDPL:
+
+
+use strict; 
+chomp($ENV{'HOME'} = `. ~/.bashrc; echo \$HOME`); 
+open(my $IN, "<", "$ENV{'HOME'}/Unicorn/Config/environ") or die "$0: $! $ENV{'HOME'}/Unicorn/Config/environ\n";  
+while(<$IN>) 
+{  
+    chomp; 
+    my ($key,$value) = split(/=/, $_); 
+    $ENV{$key} = "$value"; 
+} 
