@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.01.00
+VERSION=4.01.01
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -74,8 +74,8 @@ Notes on input files.
 
 Flags: 
 
--b, -branch, --branch [branch_name]: If any file in the input list turns out to be managed by Git, 
-    make a new branch named branch_name, make the changes, commit it, then return to the original
+-b, -branch, --branch [git_branch]: If any file in the input list turns out to be managed by Git, 
+    make a new branch named git_branch, make the changes, commit it, then return to the original
     branch. If you do not use the --branch switch changes file changes are made to the master branch.  
 -h, -help, --help: This help message. 
 -i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching. 
@@ -375,7 +375,10 @@ done
 ### Actual work happens here.
 # Test if the input script is readable.
 if [ -r "$target_script_patching_file" ]; then
-    logit "processng files found in $target_script_patching_file with commands found in $sed_script_file"
+    logit "===  $APP_NAME: $VERSION"
+    logit "===  input file list: $target_script_patching_file"
+    logit "===       sed script: $sed_script_file"
+    logit "=== branch (if repo): $git_branch"
     attempts=0
     lines=0
     patched=0
@@ -399,9 +402,7 @@ if [ -r "$target_script_patching_file" ]; then
     done < "$target_script_patching_file"
     logit "---"
     logit "read: $lines, analysed: $attempts, patched: $patched"
-    if [ -r "$TARBALL" ]; then
-        tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
-    fi
+    tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
     exit 0
 else
     logit "**error, the target script file was either missing, empty, or unreadable."
