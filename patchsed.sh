@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.00.07a
+VERSION=4.01.00
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -75,7 +75,8 @@ Notes on input files.
 Flags: 
 
 -b, -branch, --branch [branch_name]: If any file in the input list turns out to be managed by Git, 
-    make a  new branch named branch_name. 
+    make a new branch named branch_name, make the changes, commit it, then return to the original
+    branch. If you do not use the --branch switch changes file changes are made to the master branch.  
 -h, -help, --help: This help message. 
 -i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching. 
     File names should include the relative path to the $HOME directory. For example, if you want the file 
@@ -83,9 +84,12 @@ Flags:
     list will be modified in the same way. See -s for more information. 
 -r, -restore, --restore: Rolls back script changes to any checkpoint.  
     Restores all the files in all the patch.*.tar files in reverse chronological order. 
-    You will be asked to confirm each transaction. The log file is unaffected by restores. 
+    You will be asked to confirm each tarball restore. The log file is unaffected by restores. 
     If there are no patchsaas.*.tar files to restore from, ls will emit an error that  
-    it could not find a file called 'patchsaas.*.tar'. 
+    it could not find a file called 'patchsaas.*.tar'.
+    Files that end in .sed are excluded from restore since the restore is often because of a mistake
+    in the sed file itself. If you do want the sed script restored, take note of the tarball and 
+    extract it manually.
 -s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts. 
     The sed commands should be thoroughly tested before modifying scripts as complex sed commands  
     are notoriously tricky. 
@@ -299,7 +303,7 @@ restore()
             if confirm "restore files from '$tarball'"; then
                 # Extract all the files except the log file since 
                 # that would wipe the on-going history of events.
-                if tar xvf "$tarball" --exclude="${APP_NAME}.log" 2>&1 >>"$LOG_FILE"; then
+                if tar xvf "$tarball" --exclude="${APP_NAME}.log" --exclude="*.sed" 2>&1 >>"$LOG_FILE"; then
                     logit "restored files from '$tarball'"
                     last_tarball="$tarball"
                 else
@@ -319,8 +323,7 @@ restore()
 
 export target_script_patching_file=$FALSE
 export sed_script_file=$FALSE
-export use_git=$FALSE
-export git_branch=""
+export git_branch="master"
 
 # $@ is all command line parameters passed to the script.
 # -o is for short options like -v
@@ -339,7 +342,6 @@ do
     case $1 in
     -b|--branch)
         shift
-        export use_git=$TRUE
         export git_branch="$1"
         ;;
     -h|--help) 
@@ -369,7 +371,7 @@ do
     shift
 done
 # Sed file, input file names, and git branch name are all required.
-: ${sed_script_file:?Missing -s,--sed_file} ${target_script_patching_file:?Missing -i,--input_list} ${git_branch:?Missing -b,--branch}
+: ${sed_script_file:?Missing -s,--sed_file} ${target_script_patching_file:?Missing -i,--input_list}
 ### Actual work happens here.
 # Test if the input script is readable.
 if [ -r "$target_script_patching_file" ]; then
