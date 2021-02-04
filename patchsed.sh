@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.01.01
+VERSION=4.01.02
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -261,7 +261,7 @@ patch_file()
             logit "FAIL: $log_message"
             logit "**error, failed to checkout '$git_branch' branch while attempting to patch $original."
             # leave us in the directory where things went south so we can inspect.
-            exit 1
+            return $FALSE
         else
             log_message="$log_message Created branch '$git_branch'."
         fi
@@ -390,7 +390,7 @@ if [ -r "$target_script_patching_file" ]; then
                 if patch_file "$sed_script_file" "$script_name"; then
                     patched=$((patched+1))
                 else
-                    logit "patch_file() refused to patch $script_name"
+                    logit "*WARNING: unable to patch $script_name skipping..."
                 fi
             else
                 logit "**error, sed script file was not found, was empty, or could not be read."
