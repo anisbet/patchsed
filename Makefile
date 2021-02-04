@@ -28,7 +28,8 @@
 #
 #      0.0 - Dev.
 #########################################################################
-PRODUCTION_SERVER=eplapp.library.ualberta.ca
+PRODUCTION_SERVER=edpl.sirsidynix.net
+# PRODUCTION_SERVER=eplapp.library.ualberta.ca
 PRODUCTION_SAAS_SERVER=edpl.sirsidynix.net
 TEST_SERVER=edpl-t.library.ualberta.ca
 USER=sirsi
