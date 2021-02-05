@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.04.01e
+VERSION="4.05.00"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -78,8 +78,9 @@ Flags:
 -c, -comment, --comment "comment string": Adds a comment string to the log file in which you might log
     what the patches were and why you are doing them. Any comment lines in the sed script will be 
     added automatically and logged unless the --test switch is used.
--e, -debug, --debug: Go through the motions but don't apply the patch. Tests are not logged nor
-    tarballs created.
+-d, -dry_run, --dry_run: Go through the motions but don't apply the patch. Tests are not logged nor
+    tarballs created, but a dry run is made on the files and the sed script and comparison changes
+    are available $APP_NAME.results file.
 -h, -help, --help: This help message.
 -i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching.
     File names should include the relative path to the $HOME directory. For example, if you want the file
@@ -307,7 +308,7 @@ restore()
         if [ -f "$tarball" ]; then
             local sed_file=$(egrep "BACKUP:" $LOG_FILE 2>/dev/null | egrep "$tarball" | cut -d, -f2 | sed '/^$/d;s/ //g')
             local message_string=$(egrep -e "^#" "$sed_file" 2>/dev/null)
-            [ -z "$message_string" ] || echo -e "== $tarball changes:\n$message_string"
+            [ -z "$message_string" ] || echo -e "== extracting $tarball undoes:\n$message_string"
             if confirm "restore files from '$tarball'"; then
                 # Extract all the files except the log file since
                 # that would wipe the on-going history of events.
@@ -341,7 +342,7 @@ export is_test="$FALSE"
 # -l is for long options with double dash like --version
 # the comma separates different long options
 # -a is for long options with single dash like -version
-options=$(getopt -l "branch:,comment:,debug,help,input_list:,restore,sed_file:,version" -o "b:c:dhi:rs:v" -a -- "$@")
+options=$(getopt -l "branch:,comment:,dry_run,help,input_list:,restore,sed_file:,version" -o "b:c:dhi:rs:v" -a -- "$@")
 if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 # set --:
 # If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters
@@ -359,7 +360,7 @@ do
         shift
         export comment_string="$1"
         ;;
-    -d|--debug)
+    -d|--dry_run)
         export is_test="$TRUE"
         ;;
     -h|--help)
@@ -409,13 +410,24 @@ if [ -r "$target_script_patching_file" ]; then
     lines=0
     patched=0
     unpatched_files=""
+    test_file=".$APP_NAME.tst"
+    test_results="$APP_NAME.results"
+    # Empty the test results file.
+    echo >"$test_results"
     while IFS= read -r target_patch_file; do
         lines=$((lines+1))
         if [ -r "$target_patch_file" ]; then
             attempts=$((attempts+1))
             if [[ "$is_test" == "$TRUE" ]]; then
-                patched=$((patched+1))
                 logit "TEST: apply patch in '$sed_script_file' to '$target_patch_file'."
+                if sed -f "$sed_script_file" "$target_patch_file" >"$test_file"; then
+                    echo "== $target_patch_file" >>"$test_results"
+                    diff "$target_patch_file" "$test_file" >>"$test_results"
+                else
+                    logit "**error in sed file"
+                    rm "$test_file" "$test_results"
+                    exit 1
+                fi
                 continue
             fi
             if patch_file "$sed_script_file" "$target_patch_file"; then
@@ -433,6 +445,8 @@ if [ -r "$target_script_patching_file" ]; then
     [ -z "$unpatched_files" ] || logit "The following files had errors:$unpatched_files"
     if [[ "$is_test" == "$TRUE" ]]; then
         logit "TEST: no tarball created."
+        logit "Check $test_results for proposed changes."
+        rm "$test_file" 
     else
         logit "BACKUP:$TARBALL, $sed_script_file, $target_script_patching_file"
         tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
