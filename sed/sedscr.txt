@@ -7,7 +7,7 @@
 2,$ s:/s/sirsi:/software/EDPL:g
  == or ==
 # Change all instances of /s/sirsi to '~'.
-s:/s/sirsi:~:g
+2,$ s:/s/sirsi:~:g
 
 
  --- Makefile changes ---
