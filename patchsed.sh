@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION=4.01.02
+VERSION=4.04.01e
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -43,62 +43,65 @@ LOG_FILE="$WORK_DIR/${APP_NAME}.log"
 usage()
 {
     cat << EOFU!
-    
-    
+
+
  Usage: ${APP_NAME}.sh [flags]
- 
+
 Modifies scripts en masse using sed scripts. The motivation is to automate many similar changes on large numbers of files.
 The modifications are made by arbitrary sed scripts specified on the command line with the -s switch.
 
-Scripts are first tested for membership in a Git repo. If the file tests to belong to a Git repo, 
-the script started with –branch=’SAAS’ and the current branch is, say ‘FixBug’, the script checks 
-out the master branch, creates or checks out a SAAS branch, makes modifications with sed, commits 
-the changes with a message from the first comment line in the sed script, then changes back to 
+Scripts are first tested for membership in a Git repo. If the file tests to belong to a Git repo,
+the script started with –branch=’SAAS’ and the current branch is, say ‘FixBug’, the script checks
+out the master branch, creates or checks out a SAAS branch, makes modifications with sed, commits
+the changes with a message from the first comment line in the sed script, then changes back to
 ‘FixBug’ branch. If an error occurs the script will exit without changing branches.
 
-The restore feature has no effect on files monitored by Git as the changes are isolated in their 
-own branch, but to make the changes permanent the branch will need to be merged with the master 
-branch. This is left as an exercise to the reader since version numbers may need to be updated, 
-and some projects have complicated histories. Just be sure to merge the ‘SAAS’ branch before 
-pushing to production.  
+The restore feature has no effect on files monitored by Git as the changes are isolated in their
+own branch, but to make the changes permanent the branch will need to be merged with the master
+branch if you used --branch. Restore will report on what change was in the tarball if possible.
 
-If the file is not part of a repo, the pre-modified script, the transaction log, the sed script 
-will be saved to a timestamped tarball for use by the --restore function. Restore will replace 
-any file in reverse chronological order back to the first modification. You also have the 
+If the file is not part of a repo, the pre-modified script, the transaction log, the sed script
+will be saved to a timestamped tarball for use by the --restore function. Restore will replace
+any file in reverse chronological order back to the first modification. You also have the
 option to exit at any stage of restore.
 
 Notes on input files.
 * This script will use the first commented line from the sed script file as a commit message.
 * The input file list lists files relative to $HOME. The list is also used to tar the files
-  so restore will work in a consistent manner. Use 'egrep -l "<search>"' >files.lst 
+  so restore will work in a consistent manner. Use 'egrep -l "<search>"' >files.lst
 
-Flags: 
+Flags:
 
--b, -branch, --branch [git_branch]: If any file in the input list turns out to be managed by Git, 
+-b, -branch, --branch [git_branch]: If any file in the input list turns out to be managed by Git,
     make a new branch named git_branch, make the changes, commit it, then return to the original
-    branch. If you do not use the --branch switch changes file changes are made to the master branch.  
--h, -help, --help: This help message. 
--i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching. 
-    File names should include the relative path to the $HOME directory. For example, if you want the file 
-    $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this 
-    list will be modified in the same way. See -s for more information. 
--r, -restore, --restore: Rolls back script changes to any checkpoint.  
-    Restores all the files in all the patch.*.tar files in reverse chronological order. 
-    You will be asked to confirm each tarball restore. The log file is unaffected by restores. 
-    If there are no patchsaas.*.tar files to restore from, ls will emit an error that  
+    branch. If you do not use the --branch switch changes file changes are made to the master branch.
+-c, -comment, --comment "comment string": Adds a comment string to the log file in which you might log
+    what the patches were and why you are doing them. Any comment lines in the sed script will be 
+    added automatically and logged unless the --test switch is used.
+-e, -debug, --debug: Go through the motions but don't apply the patch. Tests are not logged nor
+    tarballs created.
+-h, -help, --help: This help message.
+-i, -input_list, --input_list [file]: Required. Specifies the list scripts to target for patching.
+    File names should include the relative path to the $HOME directory. For example, if you want the file
+    $HOME/foo/bar.sh to be patched, add foo/bar.sh as a line to the input list file. All files in this
+    list will be modified in the same way. See -s for more information.
+-r, -restore, --restore: Rolls back script changes to any checkpoint.
+    Restores all the files in all the patch.*.tar files in reverse chronological order.
+    You will be asked to confirm each tarball restore. The log file is unaffected by restores.
+    If there are no patchsaas.*.tar files to restore from, ls will emit an error that
     it could not find a file called 'patchsaas.*.tar'.
     Files that end in .sed are excluded from restore since the restore is often because of a mistake
-    in the sed file itself. If you do want the sed script restored, take note of the tarball and 
+    in the sed file itself. If you do want the sed script restored, take note of the tarball and
     extract it manually.
--s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts. 
-    The sed commands should be thoroughly tested before modifying scripts as complex sed commands  
-    are notoriously tricky. 
--v, -version, --version: Print script version and exits. 
+-s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts.
+    The sed commands should be thoroughly tested before modifying scripts as complex sed commands
+    are notoriously tricky.
+-v, -version, --version: Print script version and exits.
 
  Example:
     ./${APP_NAME}.sh --input_list ./scripts_to_change.txt -s sed_commands.sed
-    
-    
+
+
 EOFU!
 }
 
@@ -111,8 +114,8 @@ logit()
 {
     local message="$1"
     local time=$(date +"%Y-%m-%d %H:%M:%S")
-    echo "[$time] $message" >>$LOG_FILE
-    echo "[$time] $message" >&2
+    [[ "$is_test" == "$FALSE" ]] && echo -e "[$time] $message" >>$LOG_FILE
+    echo -e "[$time] $message" >&2
 }
 
 # Asks if user would like to do what the message says.
@@ -194,8 +197,8 @@ is_not_repo_managed()
     fi
     # We do all the operations in the git repo directory.
     local script_file_name=$(basename "$original")
-    # test if git is available, and if so test if 
-    # the file is part of a git repo. If it is, it will checkout the project as a new branch before 
+    # test if git is available, and if so test if
+    # the file is part of a git repo. If it is, it will checkout the project as a new branch before
     # makeing changes. Make the changes, commit the files, and then change back to the previous branch.
     #1 cd into directory, so find the directory.
     local git_dir=$(dirname "$original")
@@ -212,7 +215,7 @@ is_not_repo_managed()
     fi
     if ! git ls-files --error-unmatch "$script_file_name" >/dev/null 2>&1; then
         cd $HOME
-        return $TRUE    
+        return $TRUE
     fi
     cd $HOME
     return $FALSE
@@ -240,7 +243,7 @@ patch_file()
     log_message="$original using git strategy."
     # We do all the operations in the git repo directory.
     local script_file_name=$(basename "$original")
-    # Take the message for the commit from the comment line of the sed file. 
+    # Take the message for the commit from the comment line of the sed file.
     # This only looks at the first line of the sed script, but it is good policy
     # to only have a comment on that line as different versions of sed _may_ not
     # allow comments on other lines. This will quit after finding the first comment string.
@@ -252,7 +255,7 @@ patch_file()
     ## DO NOT forget to return $HOME when applying the patch.
     cd "$git_dir"
     #3) get the current branch and save it.
-    local original_branch=$(git rev-parse --abbrev-ref HEAD) 
+    local original_branch=$(git rev-parse --abbrev-ref HEAD)
     #4) checkout the branch supplied with --git, or create a new branch.
     if ! git checkout "$git_branch" >/dev/null 2>&1; then
         # There was no branch names $git_branch, let's make one.
@@ -283,40 +286,46 @@ patch_file()
     git checkout "$original_branch" >/dev/null 2>&1
     log_message="SUCCESS: $log_message Returned to '$original_branch'."
     logit "$log_message"
-    cd "$HOME" 
+    cd "$HOME"
     return $TRUE
 }
 
 # Restores all the files in all the patch.*.tar files in reverse chronological order.
 # You will be asked to confirm each transaction. The log file is unaffected by restores.
 #
-# If there are no patchsaas.*.tar files to restore from, ls will emit an error that 
-# it could not find a file called 'patchsaas.*.tar'. 
+# If there are no patchsaas.*.tar files to restore from, ls will emit an error that
+# it could not find a file called 'patchsaas.*.tar'.
 # param:  none.
 restore()
 {
     local tarball=""
     local last_tarball=""
     # list the tarballs in reverse chronological order to undo the most recent first.
+    logit "===  $APP_NAME: $VERSION"
+    logit "===  restore requested."
     for tarball in $(ls -tc1 ${APP_NAME}.*.tar); do
         if [ -f "$tarball" ]; then
+            local sed_file=$(egrep "BACKUP:" $LOG_FILE 2>/dev/null | egrep "$tarball" | cut -d, -f2 | sed '/^$/d;s/ //g')
+            local message_string=$(egrep -e "^#" "$sed_file" 2>/dev/null)
+            [ -z "$message_string" ] || echo -e "== $tarball changes:\n$message_string"
             if confirm "restore files from '$tarball'"; then
-                # Extract all the files except the log file since 
+                # Extract all the files except the log file since
                 # that would wipe the on-going history of events.
                 if tar xvf "$tarball" --exclude="${APP_NAME}.log" --exclude="*.sed" 2>&1 >>"$LOG_FILE"; then
                     logit "restored files from '$tarball'"
                     last_tarball="$tarball"
                 else
                     logit "**error, failed to restore files from $tarball."
-                    return $FALSE
+                    continue
                 fi
             else
-                [[ -z "$last_tarball" ]] || logit "restore complete"
-                return $FALSE
+                logit "$tarball not restored."
+                continue
             fi
         else
             logit "*warn, expected $tarball to be a regular file. Skipping."
         fi
+        [[ -z "$last_tarball" ]] || logit "restore complete"
     done
     return $TRUE
 }
@@ -324,16 +333,18 @@ restore()
 export target_script_patching_file=$FALSE
 export sed_script_file=$FALSE
 export git_branch="master"
+export comment_string=""
+export is_test="$FALSE"
 
 # $@ is all command line parameters passed to the script.
 # -o is for short options like -v
 # -l is for long options with double dash like --version
 # the comma separates different long options
 # -a is for long options with single dash like -version
-options=$(getopt -l "branch:,help,input_list:,restore,sed_file:,version" -o "b:hi:rs:v" -a -- "$@")
+options=$(getopt -l "branch:,comment:,debug,help,input_list:,restore,sed_file:,version" -o "b:c:dhi:rs:v" -a -- "$@")
 if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 # set --:
-# If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters 
+# If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters
 # are set to the arguments, even if some of them begin with a ‘-’.
 eval set -- "$options"
 
@@ -344,7 +355,14 @@ do
         shift
         export git_branch="$1"
         ;;
-    -h|--help) 
+    -c|--comment)
+        shift
+        export comment_string="$1"
+        ;;
+    -d|--debug)
+        export is_test="$TRUE"
+        ;;
+    -h|--help)
         usage
         exit 0
         ;;
@@ -359,7 +377,7 @@ do
         shift
         export sed_script_file="$1"
         ;;
-    -v|--version) 
+    -v|--version)
         echo "$APP_NAME version: $VERSION"
         exit 0
         ;;
@@ -379,30 +397,46 @@ if [ -r "$target_script_patching_file" ]; then
     logit "===  input file list: $target_script_patching_file"
     logit "===       sed script: $sed_script_file"
     logit "=== branch (if repo): $git_branch"
+    if [ -r "$sed_script_file" ]; then
+        sed_comment=$(egrep -e "^#" "$sed_script_file")
+        export comment_string="$comment_string\n  sed comments: $sed_comment"
+        logit "===          comment: $comment_string"
+    else
+        logit "**error, sed script file was not found, was empty, or could not be read."
+        exit 1
+    fi
     attempts=0
     lines=0
     patched=0
-    while IFS= read -r script_name; do
+    unpatched_files=""
+    while IFS= read -r target_patch_file; do
         lines=$((lines+1))
-        if [ -r "$script_name" ]; then
-            if [ -r "$sed_script_file" ]; then
-                attempts=$((attempts+1))
-                if patch_file "$sed_script_file" "$script_name"; then
-                    patched=$((patched+1))
-                else
-                    logit "*WARNING: unable to patch $script_name skipping..."
-                fi
+        if [ -r "$target_patch_file" ]; then
+            attempts=$((attempts+1))
+            if [[ "$is_test" == "$TRUE" ]]; then
+                patched=$((patched+1))
+                logit "TEST: apply patch in '$sed_script_file' to '$target_patch_file'."
+                continue
+            fi
+            if patch_file "$sed_script_file" "$target_patch_file"; then
+                patched=$((patched+1))
             else
-                logit "**error, sed script file was not found, was empty, or could not be read."
-                exit 1
+                unpatched_files="$unpatched_files\n$target_patch_file"
             fi
         else
-            logit "*warn: skipping $script_name because it could not be found, was empty, or could not be read."
+            logit "*warn: skipping $target_patch_file because it could not be found, was empty, or could not be read."
+            unpatched_files="$unpatched_files\n$target_patch_file"
         fi
     done < "$target_script_patching_file"
     logit "---"
     logit "read: $lines, analysed: $attempts, patched: $patched"
-    tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
+    [ -z "$unpatched_files" ] || logit "The following files had errors:$unpatched_files"
+    if [[ "$is_test" == "$TRUE" ]]; then
+        logit "TEST: no tarball created."
+    else
+        logit "BACKUP:$TARBALL, $sed_script_file, $target_script_patching_file"
+        tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
+    fi
     exit 0
 else
     logit "**error, the target script file was either missing, empty, or unreadable."
