@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION="4.05.00"
+VERSION="4.05.01"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -273,16 +273,21 @@ patch_file()
         log_message="$log_message Checked out '$git_branch'."
     fi
     #5) patch the files.
-    if ! apply_patch "$HOME/$sed_file" "$script_file_name"; then
-        logit "FAIL: $log_message"
-        logit "**error, failed to patch $original. Exiting leaving branch as $git_branch."
-        exit 1
+    # There are cases where the file to patch is not in the branch requested.
+    if [ -f "$script_file_name" ]; then
+        if ! apply_patch "$HOME/$sed_file" "$script_file_name"; then
+            logit "FAIL: $log_message"
+            logit "**error, failed to patch $original. Exiting leaving branch as $git_branch."
+            return $FALSE
+        else
+            log_message="$log_message Applied patch in '$sed_file' successfully."
+        fi
+        #6) commit the changes to this branch.
+        git commit -a -m"$message" >/dev/null 2>&1
+        log_message="$log_message committed '$git_branch'."
     else
-        log_message="$log_message Applied patch in '$sed_file' successfully."
+        log_message="$script_file_name not found perhaps it didn't exist on this branch."
     fi
-    #6) commit the changes to this branch.
-    git commit -a -m"$message" >/dev/null 2>&1
-    log_message="$log_message committed '$git_branch'."
     #7) change back to $original_branch.
     git checkout "$original_branch" >/dev/null 2>&1
     log_message="SUCCESS: $log_message Returned to '$original_branch'."
