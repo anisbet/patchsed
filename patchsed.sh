@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION="4.05.01"
+VERSION="4.05.02"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -69,6 +69,7 @@ Notes on input files.
 * This script will use the first commented line from the sed script file as a commit message.
 * The input file list lists files relative to $HOME. The list is also used to tar the files
   so restore will work in a consistent manner. Use 'egrep -l "<search>"' >files.lst
+* Lines that start with '#' are ignored.
 
 Flags:
 
@@ -419,6 +420,9 @@ if [ -r "$target_script_patching_file" ]; then
     test_results="$APP_NAME.results"
     # Empty the test results file.
     echo >"$test_results"
+    # Clean the input file list of blank lines and commented scripts.
+    clean_file_list="/tmp/.patch.clean.$$"
+    egrep -ve '^#|^$' "$target_script_patching_file" >"$clean_file_list"
     while IFS= read -r target_patch_file; do
         lines=$((lines+1))
         if [ -r "$target_patch_file" ]; then
@@ -430,7 +434,7 @@ if [ -r "$target_script_patching_file" ]; then
                     diff "$target_patch_file" "$test_file" >>"$test_results"
                 else
                     logit "**error in sed file"
-                    rm "$test_file" "$test_results"
+                    rm "$test_file" "$test_results" "$clean_file_list"
                     exit 1
                 fi
                 continue
@@ -444,14 +448,15 @@ if [ -r "$target_script_patching_file" ]; then
             logit "*warn: skipping $target_patch_file because it could not be found, was empty, or could not be read."
             unpatched_files="$unpatched_files\n$target_patch_file"
         fi
-    done < "$target_script_patching_file"
+    done < "$clean_file_list"
+    rm "$clean_file_list" >/dev/null 2>&1
     logit "---"
     logit "read: $lines, analysed: $attempts, patched: $patched"
     [ -z "$unpatched_files" ] || logit "The following files had errors:$unpatched_files"
     if [[ "$is_test" == "$TRUE" ]]; then
         logit "TEST: no tarball created."
         logit "Check $test_results for proposed changes."
-        rm "$test_file" 
+        rm "$test_file" >/dev/null 2>&1
     else
         logit "BACKUP:$TARBALL, $sed_script_file, $target_script_patching_file"
         tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
