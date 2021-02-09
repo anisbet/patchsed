@@ -75,11 +75,13 @@ Flags:
 
 -b, -branch, --branch [git_branch]: If any file in the input list turns out to be managed by Git,
     make a new branch named git_branch, make the changes, commit it, then return to the original
-    branch. If you do not use the --branch switch changes file changes are made to the master branch.
+    branch. If you do not use the --branch switch git will not be used as a strategy. Changes are
+    not saved to $TARBALL because of the complexity over-writing other branch changes if restore
+    is required.
 -c, -comment, --comment "comment string": Adds a comment string to the log file in which you might log
     what the patches were and why you are doing them. Any comment lines in the sed script will be 
     added automatically and logged unless the --test switch is used.
--d, -dry_run, --dry_run: Go through the motions but don't apply the patch. Tests are not logged nor
+-d, -dry_run, --dry_run: Go through the motions but do not apply the patch. Tests are not logged nor
     tarballs created, but a dry run is made on the files and the sed script and comparison changes
     are available $APP_NAME.results file.
 -h, -help, --help: This help message.
@@ -192,30 +194,34 @@ use_non_git_strategy()
 # param:  Qualified path (relative to $HOME) of the file that is the target of the modifications.
 is_not_repo_managed()
 {
+    # If $git_branch is not set, treat is as if it is not a git repo, and carry on.
+    if [ -z "$git_branch" ]; then
+        return $TRUE
+    fi
     local original="$1"
     # Test if git is even available to the user.
     if ! which git >/dev/null 2>&1; then
         return $TRUE
     fi
     # We do all the operations in the git repo directory.
-    local script_file_name=$(basename "$original")
-    # test if git is available, and if so test if
+    local modification_target_file=$(basename "$original")
     # the file is part of a git repo. If it is, it will checkout the project as a new branch before
     # makeing changes. Make the changes, commit the files, and then change back to the previous branch.
-    #1 cd into directory, so find the directory.
-    local git_dir=$(dirname "$original")
-    if [ ! -d "$git_dir" ]; then
-        logit "**error, $original, in $git_dir is not a directory. Remove it from the file list and re-run."
-        exit 1
+    #1) cd into directory, so find the directory.
+    local repo_dir=$(dirname "$original")
+    if [ ! -d "$repo_dir" ]; then
+        logit "**error, $original, in $repo_dir is not a directory. Remove it from the file list and re-run."
+        cd $HOME
+        return $TRUE
     fi
     ## DO NOT forget to return $HOME when applying the patch.
-    cd "$git_dir"
+    cd "$repo_dir"
     #2 test if this directory is under git management. If it isn't use the tarball method and return.
     if ! git status >/dev/null 2>&1; then
         cd $HOME
         return $TRUE
     fi
-    if ! git ls-files --error-unmatch "$script_file_name" >/dev/null 2>&1; then
+    if ! git ls-files --error-unmatch "$modification_target_file" >/dev/null 2>&1; then
         cd $HOME
         return $TRUE
     fi
@@ -244,7 +250,7 @@ patch_file()
     fi
     log_message="$original using git strategy."
     # We do all the operations in the git repo directory.
-    local script_file_name=$(basename "$original")
+    local modification_target_file=$(basename "$original")
     # Take the message for the commit from the comment line of the sed file.
     # This only looks at the first line of the sed script, but it is good policy
     # to only have a comment on that line as different versions of sed _may_ not
@@ -253,9 +259,9 @@ patch_file()
     local l_date=$(date +"%Y-%m-%d %H:%M:%S")
     # reasonable message even if sed didn't get anything useful from the script.
     message="Commit: $l_date $message by $0"
-    local git_dir=$(dirname "$original")
+    local repo_dir=$(dirname "$original")
     ## DO NOT forget to return $HOME when applying the patch.
-    cd "$git_dir"
+    cd "$repo_dir"
     #3) get the current branch and save it.
     local original_branch=$(git rev-parse --abbrev-ref HEAD)
     #4) checkout the branch supplied with --git, or create a new branch.
@@ -275,8 +281,8 @@ patch_file()
     fi
     #5) patch the files.
     # There are cases where the file to patch is not in the branch requested.
-    if [ -f "$script_file_name" ]; then
-        if ! apply_patch "$HOME/$sed_file" "$script_file_name"; then
+    if [ -f "$modification_target_file" ]; then
+        if ! apply_patch "$HOME/$sed_file" "$modification_target_file"; then
             logit "FAIL: $log_message"
             logit "**error, failed to patch $original. Exiting leaving branch as $git_branch."
             return $FALSE
@@ -287,7 +293,7 @@ patch_file()
         git commit -a -m"$message" >/dev/null 2>&1
         log_message="$log_message committed '$git_branch'."
     else
-        log_message="$script_file_name not found perhaps it didn't exist on this branch."
+        log_message="$modification_target_file not found perhaps it didn't exist on this branch."
     fi
     #7) change back to $original_branch.
     git checkout "$original_branch" >/dev/null 2>&1
@@ -339,7 +345,7 @@ restore()
 
 export target_script_patching_file=$FALSE
 export sed_script_file=$FALSE
-export git_branch="master"
+export git_branch=""
 export comment_string=""
 export is_test="$FALSE"
 
@@ -403,7 +409,17 @@ if [ -r "$target_script_patching_file" ]; then
     logit "===  $APP_NAME: $VERSION"
     logit "===  input file list: $target_script_patching_file"
     logit "===       sed script: $sed_script_file"
-    logit "=== branch (if repo): $git_branch"
+    if [ -z "$git_branch" ]; then
+        logit "=== branch (if repo): git not selected"
+    else
+        echo -e "*** warning ***\nAre you sure you want to make changes on branch '$git_branch'?" >&2
+        if confirm "continue anyway"; then
+            logit "=== branch (if repo): $git_branch"
+        else
+            logit "No changes. Exiting."
+            exit 0
+        fi
+    fi
     if [ -r "$sed_script_file" ]; then
         sed_comment=$(egrep -e "^#" "$sed_script_file")
         export comment_string="$comment_string\n  sed comments: $sed_comment"
