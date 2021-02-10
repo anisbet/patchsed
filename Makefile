@@ -35,36 +35,29 @@ USER=sirsi
 LOCAL=~/projects/patchsed
 APP=patchsed.sh
 
-PRE_BASH=pre-migration_bash.patch.sed
-PRE_PERL=pre-migration_perl.patch.sed
-POST_PERL=post-migration_perl.patch.sed
-PRE_MAKEFILE=pre-migration_Makefile.patch.sed
+SAAS_CHANGES=all_scripts.patch.ilsdev1.edpl.sed
+PERL_CHANGES=perl.patch.all_servers.sed
 
 .PHONY: test production saas local
 
-test: ${APP} ${PRE_PERL} ${PRE_PERL} ${PRE_BASH} 
+test: ${APP} ${PERL_CHANGES} ${SAAS_CHANGES}
 	cp ${LOCAL}/${APP} ${HOME}
+	cp ${LOCAL}/${PERL_CHANGES} ${HOME}
+	cp ${LOCAL}/${SAAS_CHANGES} ${HOME}
 	scp ${LOCAL}/${APP} ${USER}@${TEST_SERVER}:~/
-	scp ${LOCAL}/${PRE_PERL} ${USER}@${TEST_SERVER}:~/
-	# For testing. This will break perl scripts on edpl-t.
-	scp ${LOCAL}/${POST_PERL} ${USER}@${TEST_SERVER}:~/
-	scp ${LOCAL}/${PRE_BASH} ${USER}@${TEST_SERVER}:~/
-    
-local: ${PRE_BASH} ${PRE_MAKEFILE}
-	# Can use -b master.
-	cp ${LOCAL}/${PRE_MAKEFILE} ${HOME}
-	# Especially if the bash_scripts run remotely, but use -bSAAS
-	cp ${LOCAL}/${PRE_BASH} ${HOME}
-	# but use -bSAAS
-	cp ${LOCAL}/${PRE_PERL} ${HOME}
-	# but use -bSAAS
-	cp ${LOCAL}/${POST_PERL} ${HOME}
-	
-production: ${APP}  ${PRE_PERL} ${PRE_BASH}
-	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SERVER}:~/
-	scp ${LOCAL}/${PRE_PERL} ${USER}@${PRODUCTION_SERVER}:~/
-	scp ${LOCAL}/${PRE_BASH} ${USER}@${PRODUCTION_SERVER}:~/
+	scp ${LOCAL}/${PERL_CHANGES} ${USER}@${TEST_SERVER}:~/
 
-saas: ${APP}  ${POST_PERL}
+local: ${APP}
+	cp ${LOCAL}/${APP} ${HOME}
+	cp ${LOCAL}/${PERL_CHANGES} ${HOME}
+	cp ${LOCAL}/${SAAS_CHANGES} ${HOME}
+    
+eplapp: ${APP} ${PERL_CHANGES}
+	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SERVER}:~/
+	scp ${LOCAL}/${PERL_CHANGES} ${USER}@${PRODUCTION_SERVER}:~/
+
+edpl: ${APP} ${PERL_CHANGES} ${SAAS_CHANGES}
 	scp ${LOCAL}/${APP} ${USER}@${PRODUCTION_SAAS_SERVER}:~/
-	scp ${LOCAL}/${POST_PERL} ${USER}@${PRODUCTION_SAAS_SERVER}:~/
+	scp ${LOCAL}/${SAAS_CHANGES} ${USER}@${PRODUCTION_SAAS_SERVER}:~/
+	scp ${LOCAL}/${PERL_CHANGES} ${USER}@${PRODUCTION_SAAS_SERVER}:~/
+	
