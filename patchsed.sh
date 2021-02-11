@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION="4.06.07"
+VERSION="4.06.09"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -282,7 +282,7 @@ patch_file()
     fi
     #3) get the current branch and save it, but if the current branch is not 'master' warn the user.
     local original_branch=$(git rev-parse --abbrev-ref HEAD)
-    if [[ "original_branch" != "master" ]]; then
+    if [[ "$original_branch" != "master" ]]; then
         echo "current branch is $original_branch not 'master'."
         if confirm "Continue patching on this branch"; then
             log_message="$log_message *warning: changes in $git_branch will need to be merged with $original_branch"
@@ -503,10 +503,10 @@ if [ -r "$target_script_patching_file" ]; then
                 if [ ! -d "$my_dir" ]; then continue; fi
                 cd "$my_dir"
                 my_branch=$(git rev-parse --abbrev-ref HEAD)
-                my_repo_cache_is_clean="okay"
-                if git diff --cached --exit-code >/dev/null 2>&1; then my_repo_cache_is_clean="REJECT"; fi
-                my_repo_commit_is_clean="okay"
-                if git diff --exit-code >/dev/null 2>&1; then my_repo_commit_is_clean="REJECT"; fi
+                my_repo_cache_is_clean="REJECT"
+                if git diff --cached --exit-code >/dev/null 2>&1; then my_repo_cache_is_clean="okay"; fi
+                my_repo_commit_is_clean="REJECT"
+                if git diff --exit-code >/dev/null 2>&1; then my_repo_commit_is_clean="okay"; fi
                 my_repo_status="branch:'$my_branch' commits:$my_repo_commit_is_clean cache:$my_repo_cache_is_clean path:$my_dir"
                 logit "$my_repo_status"
                 cd $HOME
