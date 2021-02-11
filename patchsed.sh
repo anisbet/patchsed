@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION="4.05.02"
+VERSION="4.06.07"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -69,7 +69,7 @@ Notes on input files.
 * This script will use the first commented line from the sed script file as a commit message.
 * The input file list lists files relative to $HOME. The list is also used to tar the files
   so restore will work in a consistent manner. Use 'egrep -l "<search>"' >files.lst
-* Lines that start with '#' are ignored.
+* Blank lines and lines that start with '#' are ignored.
 
 Flags:
 
@@ -78,6 +78,10 @@ Flags:
     branch. If you do not use the --branch switch git will not be used as a strategy. Changes are
     not saved to $TARBALL because of the complexity over-writing other branch changes if restore
     is required.
+    Tests are made to make sure you are on 'master' to start with, and that there are no unstaged
+    or uncommited changes in the directory. If there are uncommitted changes, the file name is
+    output to [input_file_name].rejects. You can then tidy up the directory and re-run the patch 
+    with the rejects file as input.
 -c, -comment, --comment "comment string": Adds a comment string to the log file in which you might log
     what the patches were and why you are doing them. Any comment lines in the sed script will be 
     added automatically and logged unless the --test switch is used.
@@ -96,7 +100,7 @@ Flags:
     it could not find a file called 'patchsaas.*.tar'.
     Files that end in .sed are excluded from restore since the restore is often because of a mistake
     in the sed file itself. If you do want the sed script restored, take note of the tarball and
-    extract it manually.
+    extract it manually. The input file list is restored.
 -s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts.
     The sed commands should be thoroughly tested before modifying scripts as complex sed commands
     are notoriously tricky.
@@ -129,12 +133,12 @@ confirm()
 {
 	if [ -z "$1" ]; then
 		echo "** error, confirm_yes requires a message." >&2
-		exit $FALSE
+		exit 3
 	fi
 	local message="$1"
-	echo -n "$message? y/[n]: " >&2
-	read answer
-	case "$answer" in
+	echo "$message? " >&2
+	read -p "y/[n]: " answer < /dev/tty
+	case $answer in
 		[yY])
 			echo "yes selected." >&2
 			return $TRUE
@@ -262,9 +266,34 @@ patch_file()
     local repo_dir=$(dirname "$original")
     ## DO NOT forget to return $HOME when applying the patch.
     cd "$repo_dir"
-    #3) get the current branch and save it.
+    #2b) test if there are any uncommited files.
+    if ! git diff --exit-code >/dev/null 2>&1; then
+        logit "FAIL: $log_message Rejecting because of uncommited changes in '$repo_dir'."
+        echo "$original" >>"$REJECTED_FILES"
+        cd "$HOME"
+        return $FALSE
+    fi
+    #2c) and just for good measure, test if there are any uncommited cached files.
+    if ! git diff --cached --exit-code >/dev/null 2>&1; then
+        logit "FAIL: $log_message Rejecting because of uncommited cached changes found in '$repo_dir'."
+        echo "$original" >>"$REJECTED_FILES"
+        cd "$HOME"
+        return $FALSE
+    fi
+    #3) get the current branch and save it, but if the current branch is not 'master' warn the user.
     local original_branch=$(git rev-parse --abbrev-ref HEAD)
-    #4) checkout the branch supplied with --git, or create a new branch.
+    if [[ "original_branch" != "master" ]]; then
+        echo "current branch is $original_branch not 'master'."
+        if confirm "Continue patching on this branch"; then
+            log_message="$log_message *warning: changes in $git_branch will need to be merged with $original_branch"
+        else
+            logit "FAIL: $log_message $original patch rejected by user because repo is not on branch 'master'."
+            echo "$original" >>"$REJECTED_FILES"
+            cd "$HOME"
+            return $FALSE
+        fi
+    fi
+    #4a) checkout the branch supplied with --git, or create a new branch.
     if ! git checkout "$git_branch" >/dev/null 2>&1; then
         # There was no branch names $git_branch, let's make one.
         if ! git checkout -b "$git_branch" >/dev/null 2>&1; then
@@ -279,21 +308,53 @@ patch_file()
     else
         log_message="$log_message Checked out '$git_branch'."
     fi
+    #4b) test if there are any uncommited files.
+    if git diff --exit-code >/dev/null 2>&1; then
+        log_message="$log_message branch $git_branch has no uncommited changes."
+    else
+        log_message="$log_message Uncommited changes on ${git_branch}. Commit and re-run the patch on $REJECTED_FILES"
+        logit "FAIL: $log_message Returned to '$original_branch'."
+        echo "$original" >>"$REJECTED_FILES"
+        git checkout "$original_branch" >/dev/null 2>&1
+        cd "$HOME"
+        return $FALSE
+    fi
+    #4c) and just for good measure, test if there are any uncommited cached files.
+    if git diff --cached --exit-code >/dev/null 2>&1; then
+        log_message="$log_message Branch $git_branch has no cached changes."
+    else
+        log_message="$log_message Cached changes found on ${git_branch}. Commit and re-run the patch on $REJECTED_FILES"
+        logit "FAIL: $log_message Returned to '$original_branch'."
+        echo "$original" >>"$REJECTED_FILES"
+        git checkout "$original_branch" >/dev/null 2>&1
+        cd "$HOME"
+        return $FALSE
+    fi
     #5) patch the files.
     # There are cases where the file to patch is not in the branch requested.
     if [ -f "$modification_target_file" ]; then
         if ! apply_patch "$HOME/$sed_file" "$modification_target_file"; then
-            logit "FAIL: $log_message"
+            logit "FAIL: $log_message Expected $original, but it is not part of this branch."
             logit "**error, failed to patch $original. Exiting leaving branch as $git_branch."
+            echo "$original" >>"$REJECTED_FILES"
+            # Go back home but do not commit or return to original branch. Branches with unmerged
+            # changes will be rejected next time too.
+            # git checkout "$original_branch" >/dev/null 2>&1
+            cd "$HOME"
             return $FALSE
         else
-            log_message="$log_message Applied patch in '$sed_file' successfully."
+            log_message="$log_message Applied patch successfully."
         fi
         #6) commit the changes to this branch.
         git commit -a -m"$message" >/dev/null 2>&1
-        log_message="$log_message committed '$git_branch'."
+        log_message="$log_message Committed '$git_branch'."
     else
-        log_message="$modification_target_file not found perhaps it didn't exist on this branch."
+        log_message="$modification_target_file not found perhaps it does not exist on this branch."
+        logit "FAIL: $log_message Returned to '$original_branch'."
+        echo "$original" >>"$REJECTED_FILES"
+        git checkout "$original_branch" >/dev/null 2>&1
+        cd "$HOME"
+        return $FALSE
     fi
     #7) change back to $original_branch.
     git checkout "$original_branch" >/dev/null 2>&1
@@ -403,31 +464,15 @@ do
 done
 # Sed file, input file names, and git branch name are all required.
 : ${sed_script_file:?Missing -s,--sed_file} ${target_script_patching_file:?Missing -i,--input_list}
+REJECTED_FILES="$HOME/$target_script_patching_file.rejects"
+# Start with a fresh list for rejects so we do not re-patch files that were rejected, but later succeed.
+[ -f "$REJECTED_FILES" ] && rm "$REJECTED_FILES"
 ### Actual work happens here.
 # Test if the input script is readable.
 if [ -r "$target_script_patching_file" ]; then
     logit "===  $APP_NAME: $VERSION"
     logit "===  input file list: $target_script_patching_file"
     logit "===       sed script: $sed_script_file"
-    if [ -z "$git_branch" ]; then
-        logit "=== branch (if repo): git not selected"
-    else
-        echo -e "*** warning ***\nAre you sure you want to make changes on branch '$git_branch'?" >&2
-        if confirm "continue anyway"; then
-            logit "=== branch (if repo): $git_branch"
-        else
-            logit "No changes. Exiting."
-            exit 0
-        fi
-    fi
-    if [ -r "$sed_script_file" ]; then
-        sed_comment=$(egrep -e "^#" "$sed_script_file")
-        export comment_string="$comment_string\n  sed comments: $sed_comment"
-        logit "===          comment: $comment_string"
-    else
-        logit "**error, sed script file was not found, was empty, or could not be read."
-        exit 1
-    fi
     attempts=0
     lines=0
     patched=0
@@ -439,6 +484,46 @@ if [ -r "$target_script_patching_file" ]; then
     # Clean the input file list of blank lines and commented scripts.
     clean_file_list="/tmp/.patch.clean.$$"
     egrep -ve '^#|^$' "$target_script_patching_file" >"$clean_file_list"
+    if [ -r "$sed_script_file" ]; then
+        sed_comment=$(egrep -e "^#" "$sed_script_file")
+        export comment_string="$comment_string\n  sed comments: $sed_comment"
+        logit "===          comment: $comment_string"
+    else
+        logit "**error, sed script file was not found, was empty, or could not be read."
+        exit 1
+    fi
+    
+    if [ -z "$git_branch" ]; then
+        logit "=== branch (if repo): git not selected"
+    else
+        if [[ "$is_test" == "$TRUE" ]]; then
+            logit "= Checking repo status start"
+            while IFS= read -r target_patch_file; do 
+                my_dir=$(dirname $target_patch_file)
+                if [ ! -d "$my_dir" ]; then continue; fi
+                cd "$my_dir"
+                my_branch=$(git rev-parse --abbrev-ref HEAD)
+                my_repo_cache_is_clean="okay"
+                if git diff --cached --exit-code >/dev/null 2>&1; then my_repo_cache_is_clean="REJECT"; fi
+                my_repo_commit_is_clean="okay"
+                if git diff --exit-code >/dev/null 2>&1; then my_repo_commit_is_clean="REJECT"; fi
+                my_repo_status="branch:'$my_branch' commits:$my_repo_commit_is_clean cache:$my_repo_cache_is_clean path:$my_dir"
+                logit "$my_repo_status"
+                cd $HOME
+            done < "$clean_file_list"
+            logit "= Checking repo status end"
+        else # Make changes in the repo
+            echo -e "*** warning ***\nAre you sure you want to make changes on branch '$git_branch'?" >&2
+            if confirm "continue anyway"; then
+                logit "=== branch (if repo): $git_branch"
+            else
+                logit "No changes. Exiting."
+                exit 0
+            fi
+        fi
+    fi
+    
+    # Patch or test patch files.
     while IFS= read -r target_patch_file; do
         lines=$((lines+1))
         if [ -r "$target_patch_file" ]; then
