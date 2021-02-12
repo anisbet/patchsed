@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION="4.06.09"
+VERSION="4.07.03"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -101,9 +101,12 @@ Flags:
     Files that end in .sed are excluded from restore since the restore is often because of a mistake
     in the sed file itself. If you do want the sed script restored, take note of the tarball and
     extract it manually. The input file list is restored.
--s, -sed_file, --sed_file [file]: Required. File that contaiins the sed commands used to modify scripts.
+-s, -sed_file, --sed_file [file]: Required. File that contains the sed commands used to modify scripts.
     The sed commands should be thoroughly tested before modifying scripts as complex sed commands
     are notoriously tricky.
+-S, -stay_on_branch, --stay_on_branch: Stay on the branch after patching and commit completes successfully. 
+    Code changes will be available in the repo directory. Has no effect if --branch is not used.
+    Default = FALSE.
 -v, -version, --version: Print script version and exits.
 
  Example:
@@ -356,9 +359,16 @@ patch_file()
         cd "$HOME"
         return $FALSE
     fi
-    #7) change back to $original_branch.
-    git checkout "$original_branch" >/dev/null 2>&1
-    log_message="SUCCESS: $log_message Returned to '$original_branch'."
+    #7) change back to $original_branch if $is_stay_on_branch is set FALSE
+    if [[ "$is_stay_on_branch" == "$FALSE" ]]; then
+        git checkout "$original_branch" >/dev/null 2>&1
+        log_message="SUCCESS: $log_message Returned to '$original_branch'."
+    else
+        log_message="SUCCESS: $log_message repo remains on '$git_branch'."
+        if [[ "$git_branch" != "master" ]]; then
+            log_message="$log_message Do not forget to merge '$git_branch' with 'master'."
+        fi   
+    fi
     logit "$log_message"
     cd "$HOME"
     return $TRUE
@@ -409,13 +419,14 @@ export sed_script_file=$FALSE
 export git_branch=""
 export comment_string=""
 export is_test="$FALSE"
+export is_stay_on_branch="$FALSE"
 
 # $@ is all command line parameters passed to the script.
 # -o is for short options like -v
 # -l is for long options with double dash like --version
 # the comma separates different long options
 # -a is for long options with single dash like -version
-options=$(getopt -l "branch:,comment:,dry_run,help,input_list:,restore,sed_file:,version" -o "b:c:dhi:rs:v" -a -- "$@")
+options=$(getopt -l "branch:,comment:,dry_run,help,input_list:,restore,sed_file:,stay_on_branch,version" -o "b:c:dhi:rs:Sv" -a -- "$@")
 if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 # set --:
 # If no arguments follow this option, then the positional parameters are unset. Otherwise, the positional parameters
@@ -451,6 +462,9 @@ do
         shift
         export sed_script_file="$1"
         ;;
+    -S|--stay_on_branch)
+        export is_stay_on_branch="$TRUE"
+        ;;
     -v|--version)
         echo "$APP_NAME version: $VERSION"
         exit 0
@@ -483,7 +497,8 @@ if [ -r "$target_script_patching_file" ]; then
     echo >"$test_results"
     # Clean the input file list of blank lines and commented scripts.
     clean_file_list="/tmp/.patch.clean.$$"
-    egrep -ve '^#|^$' "$target_script_patching_file" >"$clean_file_list"
+    # Files that appear twice on the same list patch files twice.
+    egrep -ve '^#|^$' "$target_script_patching_file" | sort | uniq >"$clean_file_list"
     if [ -r "$sed_script_file" ]; then
         sed_comment=$(egrep -e "^#" "$sed_script_file")
         export comment_string="$comment_string\n  sed comments: $sed_comment"
@@ -496,6 +511,10 @@ if [ -r "$target_script_patching_file" ]; then
     if [ -z "$git_branch" ]; then
         logit "=== branch (if repo): git not selected"
     else
+        # default is to return to the original branch.
+        my_stay_on_branch="no"
+        if [[ "$is_stay_on_branch" == "$TRUE" ]]; then my_stay_on_branch="yes"; fi
+        logit "=== branch (if repo): $git_branch, stay on checkout branch: $my_stay_on_branch"
         if [[ "$is_test" == "$TRUE" ]]; then
             logit "= Checking repo status start"
             while IFS= read -r target_patch_file; do 
@@ -513,9 +532,9 @@ if [ -r "$target_script_patching_file" ]; then
             done < "$clean_file_list"
             logit "= Checking repo status end"
         else # Make changes in the repo
-            echo -e "*** warning ***\nAre you sure you want to make changes on branch '$git_branch'?" >&2
+            echo -e "Confirm: you want to make changes on branch '$git_branch'?" >&2
             if confirm "continue anyway"; then
-                logit "=== branch (if repo): $git_branch"
+                logit "start patch process selected."
             else
                 logit "No changes. Exiting."
                 exit 0
