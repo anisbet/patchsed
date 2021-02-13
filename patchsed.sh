@@ -23,7 +23,7 @@
 # MA 02110-1301, USA.
 #
 #########################################################################
-VERSION="4.07.03"
+VERSION="4.07.04"
 APP_NAME="patchsed"
 TRUE=0
 FALSE=1
@@ -63,13 +63,17 @@ branch if you used --branch. Restore will report on what change was in the tarba
 If the file is not part of a repo, the pre-modified script, the transaction log, the sed script
 will be saved to a timestamped tarball for use by the --restore function. Restore will replace
 any file in reverse chronological order back to the first modification. You also have the
-option to exit at any stage of restore.
+option to exit at any stage of restore. 
+
+A list of files that failed during the patching process are listed in a [input_file_list].rejects
+file. A non-empty rejects file (if any) is saved in the tarball and restored if --restore is used.
 
 Notes on input files.
 * This script will use the first commented line from the sed script file as a commit message.
 * The input file list lists files relative to $HOME. The list is also used to tar the files
   so restore will work in a consistent manner. Use 'egrep -l "<search>"' >files.lst
 * Blank lines and lines that start with '#' are ignored.
+* Any files that fail to patch are recorded and saved in a <intput_file_name>.rejects file.
 
 Flags:
 
@@ -100,7 +104,8 @@ Flags:
     it could not find a file called 'patchsaas.*.tar'.
     Files that end in .sed are excluded from restore since the restore is often because of a mistake
     in the sed file itself. If you do want the sed script restored, take note of the tarball and
-    extract it manually. The input file list is restored.
+    extract it manually. The input file list and the rejects list are restored. The rejects list
+    is called <input_file_list>.rejects.
 -s, -sed_file, --sed_file [file]: Required. File that contains the sed commands used to modify scripts.
     The sed commands should be thoroughly tested before modifying scripts as complex sed commands
     are notoriously tricky.
@@ -272,14 +277,12 @@ patch_file()
     #2b) test if there are any uncommited files.
     if ! git diff --exit-code >/dev/null 2>&1; then
         logit "FAIL: $log_message Rejecting because of uncommited changes in '$repo_dir'."
-        echo "$original" >>"$REJECTED_FILES"
         cd "$HOME"
         return $FALSE
     fi
     #2c) and just for good measure, test if there are any uncommited cached files.
     if ! git diff --cached --exit-code >/dev/null 2>&1; then
         logit "FAIL: $log_message Rejecting because of uncommited cached changes found in '$repo_dir'."
-        echo "$original" >>"$REJECTED_FILES"
         cd "$HOME"
         return $FALSE
     fi
@@ -291,7 +294,6 @@ patch_file()
             log_message="$log_message *warning: changes in $git_branch will need to be merged with $original_branch"
         else
             logit "FAIL: $log_message $original patch rejected by user because repo is not on branch 'master'."
-            echo "$original" >>"$REJECTED_FILES"
             cd "$HOME"
             return $FALSE
         fi
@@ -315,9 +317,8 @@ patch_file()
     if git diff --exit-code >/dev/null 2>&1; then
         log_message="$log_message branch $git_branch has no uncommited changes."
     else
-        log_message="$log_message Uncommited changes on ${git_branch}. Commit and re-run the patch on $REJECTED_FILES"
+        log_message="$log_message Uncommited changes on ${git_branch}. Commit and re-run the patch."
         logit "FAIL: $log_message Returned to '$original_branch'."
-        echo "$original" >>"$REJECTED_FILES"
         git checkout "$original_branch" >/dev/null 2>&1
         cd "$HOME"
         return $FALSE
@@ -326,9 +327,8 @@ patch_file()
     if git diff --cached --exit-code >/dev/null 2>&1; then
         log_message="$log_message Branch $git_branch has no cached changes."
     else
-        log_message="$log_message Cached changes found on ${git_branch}. Commit and re-run the patch on $REJECTED_FILES"
+        log_message="$log_message Cached changes found on ${git_branch}. Commit and re-run the patch."
         logit "FAIL: $log_message Returned to '$original_branch'."
-        echo "$original" >>"$REJECTED_FILES"
         git checkout "$original_branch" >/dev/null 2>&1
         cd "$HOME"
         return $FALSE
@@ -339,7 +339,6 @@ patch_file()
         if ! apply_patch "$HOME/$sed_file" "$modification_target_file"; then
             logit "FAIL: $log_message Expected $original, but it is not part of this branch."
             logit "**error, failed to patch $original. Exiting leaving branch as $git_branch."
-            echo "$original" >>"$REJECTED_FILES"
             # Go back home but do not commit or return to original branch. Branches with unmerged
             # changes will be rejected next time too.
             # git checkout "$original_branch" >/dev/null 2>&1
@@ -354,7 +353,6 @@ patch_file()
     else
         log_message="$modification_target_file not found perhaps it does not exist on this branch."
         logit "FAIL: $log_message Returned to '$original_branch'."
-        echo "$original" >>"$REJECTED_FILES"
         git checkout "$original_branch" >/dev/null 2>&1
         cd "$HOME"
         return $FALSE
@@ -572,7 +570,11 @@ if [ -r "$target_script_patching_file" ]; then
     rm "$clean_file_list" >/dev/null 2>&1
     logit "---"
     logit "read: $lines, analysed: $attempts, patched: $patched"
-    [ -z "$unpatched_files" ] || logit "The following files had errors:$unpatched_files"
+    if [ ! -z "$unpatched_files" ]; then 
+        logit "The following files had errors:$unpatched_files"
+        logit "saving rejected file list: $REJECTED_FILES"
+        echo -e "$unpatched_files" >>"$REJECTED_FILES"
+    fi
     if [[ "$is_test" == "$TRUE" ]]; then
         logit "TEST: no tarball created."
         logit "Check $test_results for proposed changes."
@@ -580,6 +582,10 @@ if [ -r "$target_script_patching_file" ]; then
     else
         logit "BACKUP:$TARBALL, $sed_script_file, $target_script_patching_file"
         tar rvf "$TARBALL" "${APP_NAME}.log" "$target_script_patching_file" "$sed_script_file" >/dev/null
+        if [ ! -z "$unpatched_files" ]; then
+            logit "backing up rejected file list: $REJECTED_FILES"
+            tar rvf "$TARBALL" "$REJECTED_FILES" >/dev/null
+        fi
     fi
     exit 0
 else
